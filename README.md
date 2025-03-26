@@ -3,4 +3,3 @@ Code, data, and analysis for the paper “The geometry of the neural state space
 
 https://doi.org/10.1101/2025.01.24.634806
 
-https://www.biorxiv.org/content/10.1101/2025.01.24.634806v1
