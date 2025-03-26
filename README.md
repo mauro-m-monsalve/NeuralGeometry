@@ -1,9 +1,16 @@
-<p align="center">
-  <img src="logo.png" width="200"/>
-</p>
-
-# NeuralGeometry
-Code, data, and analysis for the paper “The geometry of the neural state space of decisions” (Monsalve-Mercado et al., 2025). Includes neural manifold construction, single-trial geometry, mechanistic modeling, and figure reproduction.
-
-https://doi.org/10.1101/2025.01.24.634806
-
+<table>
+<tr>
+<td><img src="logo.png" width="100"/></td>
+<td>
+  <h2>NeuralGeometry</h2>
+  <p>
+    Code, data, and analysis for the paper<br/>
+    <strong>“The geometry of the neural state space of decisions”</strong><br/>
+    <em>(Monsalve-Mercado et al., 2025)</em><br/>
+    <br/>
+    Includes neural manifold construction, single-trial geometry, mechanistic modeling, and figure reproduction.<br/>
+    <a href="https://doi.org/10.1101/2025.01.24.634806">https://doi.org/10.1101/2025.01.24.634806</a>
+  </p>
+</td>
+</tr>
+</table>
