@@ -1,6 +1,6 @@
 <table>
 <tr>
-<td><img src="logo.png" width="100"/></td>
+<td><img src="logo.png" width="200"/></td>
 <td>
   <h2>NeuralGeometry</h2>
   <p>
