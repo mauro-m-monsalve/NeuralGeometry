@@ -14,3 +14,14 @@
 </td>
 </tr>
 </table>
+
+<p>
+  <a href="https://doi.org/10.5281/zenodo.15093134">
+    <img src="https://zenodo.org/badge/DOI/10.5281/zenodo.15093134.svg" alt="DOI">
+  </a>
+</p>
+
+<p>
+  📦 Processed datasets available on Zenodo:  
+  <a href="https://doi.org/10.5281/zenodo.15093134">10.5281/zenodo.15093134</a>
+</p>
