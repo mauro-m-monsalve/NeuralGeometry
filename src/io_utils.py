@@ -64,3 +64,36 @@ def load_dataframe_with_metadata(session, filepath=None):
     df = bundle['df']
     df.attrs.update(bundle.get('attrs', {}))
     return df
+
+
+import os
+import urllib.request
+
+def download_session(session: str, overwrite: bool = False) -> str:
+    """
+    Download the preprocessed LIP dataset for a given session from Zenodo.
+
+    Parameters:
+        session (str): Session name, one of 'S1' to 'S8'.
+        overwrite (bool): If True, overwrite existing file.
+
+    Returns:
+        str: Path to the downloaded file (data/{session}.pkl.gz)
+    """
+    assert session in [f"S{i}" for i in range(1, 9)], "Session must be one of 'S1' to 'S8'"
+
+    zenodo_base = "https://zenodo.org/records/15093134/files"
+    filename = f"{session}.pkl.gz"
+    url = f"{zenodo_base}/{filename}"
+    target_path = os.path.join("data", filename)
+
+    os.makedirs("data", exist_ok=True)
+
+    if not os.path.exists(target_path) or overwrite:
+        print(f"Downloading {filename} from Zenodo...")
+        urllib.request.urlretrieve(url, target_path)
+        print(f"Download complete: {target_path}")
+    else:
+        print(f"File already exists: {target_path}")
+
+    return target_path
