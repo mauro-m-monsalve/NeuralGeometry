@@ -1,0 +1,22 @@
+name: neuralgeometry
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - plotly
+  - scikit-learn
+  - tqdm
+  - statsmodels
+  - ipykernel
+  - jupyter
+  - jupyterlab
+  - nodejs  # Required for some JupyterLab extensions
+  - ipywidgets
+  - jupyterlab_widgets
+  - jupyter_contrib_nbextensions
+  - notebook
+
