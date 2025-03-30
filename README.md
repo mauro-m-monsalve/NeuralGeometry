@@ -22,6 +22,6 @@
 </p>
 
 <p>
-  📦 Processed datasets available on Zenodo:  
+  Processed datasets available on Zenodo:  
   <a href="https://doi.org/10.5281/zenodo.15093134">10.5281/zenodo.15093134</a>
 </p>
