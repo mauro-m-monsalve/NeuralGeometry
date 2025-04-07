@@ -3,8 +3,9 @@ import plotly.graph_objects as go
 import plotly.express as px
 from matplotlib.colors import LinearSegmentedColormap, to_rgb, rgb2hex
 from scipy.ndimage import gaussian_filter1d as gf
-
+import matplotlib.colors as mcolors
 from plotly.subplots import make_subplots
+
 
 def interpolate_colors(color1, color2, num_colors=10):
     """
@@ -203,3 +204,105 @@ def plot_local_average_pop(manifolds, behavioral_axes, axis_names=['PC1 (Hz)', '
     )
 
     return fig
+
+
+def plot_violin(df, var='RT', group_by='motion_coherence', color_by='choice', colors=None):
+
+    df = df.copy()
+    df[group_by] = df[group_by].astype(str)  # Treat group_by as categorical
+
+    if colors is None:
+        default_colors = ['xkcd:neon blue', 'xkcd:neon pink', 'xkcd:neon purple',
+                          'xkcd:neon yellow', 'xkcd:neon red', 'xkcd:neon green']
+        unique_choices = sorted(df[color_by].unique())
+        hex_colors = [mcolors.to_hex(mcolors.to_rgb(c)) for c in default_colors[:len(unique_choices)]]
+        color_map = dict(zip(unique_choices, hex_colors))
+    else:
+        unique_choices = sorted(df[color_by].unique())
+        color_map = dict(zip(unique_choices, colors[:len(unique_choices)]))
+
+    fig = go.Figure()
+    unique_groups = sorted(df[group_by].unique())
+    n_choices = len(unique_choices)
+    offset = 0.8 / n_choices
+
+    for j, choice in enumerate(unique_choices):
+        for i, group in enumerate(unique_groups):
+            group_data = df[(df[group_by] == group) & (df[color_by] == choice)]
+            fig.add_trace(go.Violin(
+                x=[i + (j - (n_choices - 1) / 2) * offset] * len(group_data),
+                y=group_data[var],
+                name=str(choice),
+                legendgroup=str(choice),
+                scalegroup=str(choice),
+                line_color=color_map[choice],
+                box_visible=True,
+                meanline_visible=True,
+                width=offset
+            ))
+
+    fig.update_layout(
+        title=f"Distribution of {var} grouped by {group_by} and colored by {color_by}",
+        yaxis_title=var,
+        xaxis=dict(
+            tickmode='array',
+            tickvals=list(range(len(unique_groups))),
+            ticktext=unique_groups,
+            title=group_by
+        ),
+        template="plotly_white",
+        violinmode='overlay',
+        width=800,
+        height=500
+    )
+
+    fig.show()
+
+
+def plot_proportion(df, choice='Contra', group_by='motion_coherence', targets='target', colors=None):
+
+    df = df.copy()
+    df[group_by] = df[group_by].astype(str)
+
+    unique_targets = sorted(df[targets].unique())
+    groups = sorted(df[group_by].unique())
+
+    if colors is None:
+        default_colors = ['xkcd:neon blue', 'xkcd:neon pink', 'xkcd:neon purple',
+                          'xkcd:neon yellow', 'xkcd:neon red', 'xkcd:neon green']
+        hex_colors = [mcolors.to_hex(mcolors.to_rgb(c)) for c in default_colors[:len(unique_targets)]]
+        color_map = dict(zip(unique_targets, hex_colors))
+    else:
+        color_map = dict(zip(unique_targets, colors[:len(unique_targets)]))
+
+    fig = go.Figure()
+
+    for target in unique_targets:
+        proportions = []
+        for g in groups:
+            subset = df[(df[group_by] == g) & (df[targets] == target)]
+            if len(subset) == 0:
+                proportions.append(None)
+            else:
+                p = (subset['choice'] == choice).mean()
+                proportions.append(p)
+        fig.add_trace(go.Scatter(
+            x=groups,
+            y=proportions,
+            mode='markers+lines',
+            name=str(target),
+            marker=dict(color=color_map[target], size=8),
+            line=dict(color=color_map[target], width=2, dash='dot')
+        ))
+
+    fig.update_layout(
+        title=f"Proportion of Trials Choosing '{choice}' by {targets} and {group_by}",
+        xaxis_title=group_by,
+        yaxis_title=f"Proportion Choosing '{choice}'",
+        yaxis=dict(range=[0, 1]),
+        template="plotly_white",
+        width=800,
+        height=500
+    )
+
+    fig.show()
