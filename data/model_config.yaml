@@ -1,0 +1,52 @@
+model:
+  taue: 150.0             # Excitatory time constant [ms]
+  taui: 10.0              # Inhibitory time constant [ms]
+  ke: 1.0                 # Excitatory gain
+  ki: 1.0                 # Inhibitory gain
+  ne: 1.0                 # Excitatory nonlinearity exponent
+  ni: 2.0                 # Inhibitory nonlinearity exponent
+  re0: 10.0               # Initial excitatory activity [Hz]
+  ri0: 10.0               # Initial inhibitory activity [Hz]
+  wee: 8.0                # E→E connection strength
+  wei: 14.0               # I→E connection strength
+  wie: 14.0               # E→I connection strength
+  wii: 8.0                # I→I connection strength
+  see: 6.0               # E→E spatial spread (sigma) [dva]
+  sei: 24.0              # I→E spatial spread
+  sie: 6.0               # E→I spatial spread
+  sii: 6.0               # I→I spatial spread
+
+input:
+  # Deterministic input
+  c: 50.0                     # Baseline input strength
+  g: 0.5                      # Sensitivity to coherence
+  targets:
+    - center: [-6.0, 0.0]
+      name: Contra
+    - center: [6.0, 0.0]
+      name: Ipsi
+    # - center: [0.0, 10.4]   # Add another target, e.g. an Up choice
+    #   name: Up
+  input_sigma: 5.5            # Spatial spread of target inputs [dva]
+  conditions:
+    motion_coherence: [0.0, 0.032, 0.064, 0.128, 0.256, 0.512]
+    # color_coherence: [0.0, 0.032, 0.064, 0.128, 0.256, 0.512]   # Add another condition, e.g. color coherence
+  # Zero-mean OU spatially correlated noise
+  noise_tau: 100.0            # Temporal autocorrelation [ms] of OU noise
+  noise_sigma: 10.0           # Amplitude of input noise
+  noise_spatialcor_sigma: 1.0 # Spatial correlation spread of input noise [dva]
+
+simulation:
+  dt: 0.1                      # Time step [ms]
+  T: 2000.0                    # Total simulation time [ms]
+  NTrials: 200                 # Number of trials per condition
+  grid_size: [51, 51]          # Number of units in [x, y] (rectangular grid)
+  extent_dva: [50.0, 50.0]     # Visual angle extent in dva (e.g., [-150,150] in x and y)
+  time_bin_size: 10.0          # Bin size to save the mean of the simulated data [ms]
+  extent_save: [30.0,20.0]     # Save only a cropped rectangular window of pixels centered at zero
+  save_ri : False              # Optionally save the activity of inhibitory units
+  boundary_conditions: "none"  # Default="none". Use "wrap" for periodic BCs if needed
+  device: "none"               # "cuda", "cpu", or "mps" depending on hardware
+  # Decision termination
+  tin_radius: 3.0              # Radius around targets to select target-responsive cells (e.g. TinC, TinI) [dva]
+  decision_threshold: 100.0    # Threshold reached by the difference of mean activity of target-responsive cells to terminate the decision [Hz]
