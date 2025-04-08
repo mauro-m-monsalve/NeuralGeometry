@@ -306,3 +306,5 @@ def plot_proportion(df, choice='Contra', group_by='motion_coherence', targets='t
     )
 
     fig.show()
+
+

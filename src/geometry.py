@@ -1,8 +1,14 @@
 
 import numpy as np
+from joblib import Parallel, delayed
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 import plotly.graph_objects as go
+from statsmodels.nonparametric.smoothers_lowess import lowess
+from scipy.interpolate import interp1d
+import scipy.interpolate
+from tqdm import tqdm
+import scipy.ndimage
 
 def get_pca(df, column='LFADS', cells=None, components=10, plot=True):
     """
@@ -189,7 +195,7 @@ def der(arr, axis=-1):
 
 
 
-import scipy.ndimage
+
 
 def K(curve, w=1, zoom=1):
     """
@@ -315,9 +321,6 @@ def Curvatures(dat, s=5):
     return K
 
 
-
-import numpy as np
-import scipy.ndimage
 
 def Tortuosity(curvature, zoom=10, smoothing_sigma=75):
     """
@@ -452,9 +455,6 @@ def tangent_space(data, axis=-1):
     
     
 
-
-import numpy as np
-
 def compute_unit_orthogonal_vectors(a, b, axis=0):
     """
     Compute unit vectors orthogonal to vectors `a` that lie within the plane spanned by vectors `a` and `b`.
@@ -506,7 +506,7 @@ def compute_unit_orthogonal_vectors(a, b, axis=0):
 
 
 
-import scipy.interpolate
+
 
 def compute_geometry_measures(df, column='LFADS-PCA', timeres=10, arc_res=101):
     """
@@ -638,7 +638,6 @@ def get_components(df,
 ################################ OTHER TOOLS #########################################
 
 
-import numpy as np
 
 def uniformize(x):
     """
@@ -666,12 +665,6 @@ def uniformize(x):
     return uniform_values
 
 
-
-import numpy as np
-import pandas as pd
-from statsmodels.nonparametric.smoothers_lowess import lowess
-from scipy.interpolate import interp1d
-from tqdm import tqdm
 
 def local_average(df, column, behavioral_axis='RT', frac=0.5, ba_res=101, method='lowess', remove_outliers=0.01):
     """
@@ -705,68 +698,53 @@ def local_average(df, column, behavioral_axis='RT', frac=0.5, ba_res=101, method
                 remove_outliers=0.01
             )
     """
+ 
+    def _smooth(x, y, method, frac):
+        if method == 'lowess':
+            smoothed = lowess(x, y, frac=frac, return_sorted=True)
+            return smoothed[:, 0], smoothed[:, 1]
+        elif method == 'cdf-lowess':
+            y_uniform = uniformize(y)
+            smoothed = lowess(x, y_uniform, frac=frac, return_sorted=True)
+            return np.sort(y), smoothed[:, 1]
+        else:
+            raise ValueError(f"Unknown method '{method}'")
+ 
+    def _remove_outliers(df, col, prop):
+        if not prop:
+            return df
+        lower = df[col].quantile(prop)
+        upper = df[col].quantile(1 - prop)
+        return df[(df[col] >= lower) & (df[col] <= upper)]
+ 
+    # Preprocess and stack input
+    df_filtered = _remove_outliers(df, behavioral_axis, remove_outliers)
+    behaviors = df_filtered[behavioral_axis].values
+    trials = df_filtered[column].values
+    stacked = np.stack(trials, axis=0)
+ 
+    if stacked.ndim == 2:  # (T, L)
+        stacked = stacked[:, None, :]  # (T, 1, L)
+    T, N, L = stacked.shape
+    behavioral_axis_new = np.linspace(behaviors.min(), behaviors.max(), ba_res)
+    interpolated_array = np.zeros((N, L, ba_res))
+ 
+    def _interpolate_point(n, l):
+        values = stacked[:, n, l]
+        bx, vx = _smooth(values, behaviors, method, frac)
+        interp = interp1d(bx, vx, kind='linear', bounds_error=False, fill_value=np.nan)
+        return n, l, interp(behavioral_axis_new)
 
-    # Optionally remove top and bottom quantile outliers based on behavioral measure
-    if remove_outliers and remove_outliers > 0:
-        lower_threshold = df[behavioral_axis].quantile(remove_outliers)
-        upper_threshold = df[behavioral_axis].quantile(1 - remove_outliers)
-        df_filtered = df[(df[behavioral_axis] >= lower_threshold) &
-                         (df[behavioral_axis] <= upper_threshold)]
-    else:
-        df_filtered = df
+    results = Parallel(n_jobs=-1)(
+        delayed(_interpolate_point)(n, l)
+        for n, l in tqdm([(n, l) for n in range(N) for l in range(L)], desc="Interpolating")
+    )
 
-    # Define new behavioral axis for interpolation
-    behavioral_min = df_filtered[behavioral_axis].min()
-    behavioral_max = df_filtered[behavioral_axis].max()
-    behavioral_axis_new = np.linspace(behavioral_min, behavioral_max, ba_res)
-
-    # Determine data shape from a sample entry
-    sample_array = df_filtered[column].iloc[0]
-    if np.ndim(sample_array) == 1:
-        N, L = 1, len(sample_array)
-        interpolated_array = np.zeros((1, L, ba_res))
-    else:
-        N, L = sample_array.shape
-        interpolated_array = np.zeros((N, L, ba_res))
-
-    total_iterations = N * L
-    with tqdm(total=total_iterations, desc="Interpolating") as pbar:
-        for n in range(N):
-            for l in range(L):
-                # Extract values and behavioral measure for each dimension and arc-length point
-                values = np.array([
-                    trial[n, l] if N > 1 else trial[l]
-                    for trial in df_filtered[column]
-                ])
-                behaviors = df_filtered[behavioral_axis].values
-
-                # Apply LOWESS smoothing
-                if method == 'lowess':
-                    smoothed = lowess(values, behaviors, frac=frac, return_sorted=True)
-                    behaviors_smoothed, values_smoothed = smoothed[:, 0], smoothed[:, 1]
-                elif method == 'cdf-lowess':
-                    behaviors_uniform = uniformize(behaviors)
-                    smoothed = lowess(values, behaviors_uniform, frac=frac, return_sorted=True)
-                    behaviors_smoothed, values_smoothed = np.sort(behaviors), smoothed[:, 1]
-                else:
-                    raise ValueError(f"Unknown method '{method}'. Choose 'lowess' or 'cdf-lowess'.")
-
-                # Cubic spline interpolation of the smoothed data
-                interp = interp1d(
-                    behaviors_smoothed,
-                    values_smoothed,
-                    kind='linear',
-                    bounds_error=False,
-                    fill_value=np.nan
-                )
-
-                interpolated_values = interp(behavioral_axis_new)
-
-                interpolated_array[n, l, :] = interpolated_values
-                pbar.update(1)
-
-    if N == 1:
-        interpolated_array = interpolated_array.squeeze(axis=0)
-
+    for n, l, interpolated in results:
+        interpolated_array[n, l, :] = interpolated
+ 
+    if interpolated_array.shape[0] == 1:
+        interpolated_array = interpolated_array.squeeze(0)
+ 
     return interpolated_array, behavioral_axis_new
 
