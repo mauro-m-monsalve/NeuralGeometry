@@ -1224,7 +1224,7 @@ def plot_response_fields(ds, cells='TinC', n_columns=10, sort=None):
         
         max_fr = np.nanmax(z.values)
         fig.add_annotation(
-            text=f"Peak: {max_fr:.1f} Hz",
+            text=f"{max_fr:.1f} Hz",
             xref=f"x{(row-1)*n_columns+col}",
             yref=f"y{(row-1)*n_columns+col}",
             x=ds['x'].values[-1],
