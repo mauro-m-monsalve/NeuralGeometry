@@ -1119,6 +1119,9 @@ def plot_pop_selectivity_scatter(cs_df, pops, arc=0.75, percentile=10, cell_rang
     '''
 
 
+    # Create figures directory if it doesn't exist
+    import os
+    os.makedirs("figures", exist_ok=True)
     # Save the full HTML to disk
     filename = "figures/choice_selectivity_scatter.html"
     with open(filename, 'w') as f:
