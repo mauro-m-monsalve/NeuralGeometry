@@ -9,6 +9,7 @@ dependencies:
   - matplotlib
   - plotly
   - scikit-learn
+  - pot
   - tqdm
   - statsmodels
   - ipykernel
@@ -19,4 +20,3 @@ dependencies:
   - jupyterlab_widgets
   - jupyter_contrib_nbextensions
   - notebook
-

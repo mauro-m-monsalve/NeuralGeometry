@@ -1,9 +1,7 @@
-
-
 import pandas as pd
 import pickle
 import gzip
-from datetime import datetime
+
 
 # Session metadata mapping
 SESSION_METADATA = {
@@ -74,26 +72,44 @@ def download_session(session: str, overwrite: bool = False) -> str:
     Download the preprocessed LIP dataset for a given session from Zenodo.
 
     Parameters:
-        session (str): Session name, one of 'S1' to 'S8'.
+        session (str): Session name, one of 'S1' to 'S8', or file to download without the .pkl.gz suffix.
         overwrite (bool): If True, overwrite existing file.
 
     Returns:
         str: Path to the downloaded file (data/{session}.pkl.gz)
     """
-    assert session in [f"S{i}" for i in range(1, 9)], "Session must be one of 'S1' to 'S8'"
-
-    zenodo_base = "https://zenodo.org/records/15093134/files"
     filename = f"{session}.pkl.gz"
-    url = f"{zenodo_base}/{filename}"
     target_path = os.path.join("data", filename)
 
     os.makedirs("data", exist_ok=True)
 
-    if not os.path.exists(target_path) or overwrite:
-        print(f"Downloading {filename} from Zenodo...")
+    if os.path.exists(target_path) and not overwrite:
+        print(f"File already exists: {target_path}")
+        return target_path
+
+    zenodo_base = "https://zenodo.org/records/15093134/files"
+    url = f"{zenodo_base}/{filename}"
+
+    try:
+        print(f"Attempting to download {filename} from Zenodo...")
         urllib.request.urlretrieve(url, target_path)
         print(f"Download complete: {target_path}")
-    else:
-        print(f"File already exists: {target_path}")
+        return target_path
+    except Exception as e:
+        print(f"Could not download {filename}. Error: {e}")
+        return None
+    
 
-    return target_path
+import os
+import sys
+import contextlib
+
+@contextlib.contextmanager
+def suppress_output():
+    with open(os.devnull, 'w') as devnull:
+        old_stdout, old_stderr = sys.stdout, sys.stderr
+        sys.stdout, sys.stderr = devnull, devnull
+        try:
+            yield
+        finally:
+            sys.stdout, sys.stderr = old_stdout, old_stderr
