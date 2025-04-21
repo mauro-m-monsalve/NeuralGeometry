@@ -29,7 +29,7 @@ The analysis covers neural manifold construction, arc-length parameterization, r
 ### Processed Data
 
 All datasets are preprocessed and available via Zenodo:  
-[doi:10.5281/zenodo.15093134](https://doi.org/10.5281/zenodo.15093134)  
+[doi.org/10.5281/zenodo.15093133](https://doi.org/10.5281/zenodo.15093133)  
 These files include firing rates, LFADS-inferred trajectories, trial metadata, and behavioral annotations.
 
 ---
@@ -69,5 +69,5 @@ If you use this code or dataset, please cite:
 
 ### Quick Links
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15093134.svg)](https://doi.org/10.5281/zenodo.15093134)  
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15093133.svg)](https://doi.org/10.5281/zenodo.15093133)  
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/mauro-m-monsalve/NeuralGeometry/main)
