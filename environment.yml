@@ -20,3 +20,4 @@ dependencies:
   - jupyterlab_widgets
   - jupyter_contrib_nbextensions
   - notebook
+  - xarray
