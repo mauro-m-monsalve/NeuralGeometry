@@ -65,38 +65,61 @@ def load_dataframe_with_metadata(session, filepath=None):
 
 
 import os
-import urllib.request
+import requests
+
+ZENODO_DOI = "10.5281/zenodo.15093133"
+ZENODO_API = f"https://doi.org/{ZENODO_DOI}"
 
 def download_session(session: str, overwrite: bool = False) -> str:
     """
     Download the preprocessed LIP dataset for a given session from Zenodo.
 
-    Parameters:
-        session (str): Session name, one of 'S1' to 'S8', or file to download without the .pkl.gz suffix.
-        overwrite (bool): If True, overwrite existing file.
+    Args:
+        session (str): Session name, one of 'S1' to 'S8' (without .pkl.gz extension)
+        overwrite (bool): If True, overwrite existing file
 
     Returns:
         str: Path to the downloaded file (data/{session}.pkl.gz)
     """
     filename = f"{session}.pkl.gz"
     target_path = os.path.join("data", filename)
-
     os.makedirs("data", exist_ok=True)
 
     if os.path.exists(target_path) and not overwrite:
         print(f"File already exists: {target_path}")
         return target_path
 
-    zenodo_base = "https://zenodo.org/records/15093134/files"
-    url = f"{zenodo_base}/{filename}"
-
+    # Resolve DOI to latest version
     try:
-        print(f"Attempting to download {filename} from Zenodo...")
-        urllib.request.urlretrieve(url, target_path)
+        print(f"Resolving DOI {ZENODO_DOI} to fetch latest version info...")
+        response = requests.get(ZENODO_API, allow_redirects=True)
+        response.raise_for_status()
+
+        # Follow redirect to final Zenodo record
+        latest_url = response.url
+        record_id = latest_url.strip("/").split("/")[-1]
+        files_api = f"https://zenodo.org/api/records/{record_id}"
+        
+        # Get list of files
+        files_response = requests.get(files_api)
+        files_response.raise_for_status()
+        files_info = files_response.json()["files"]
+
+        # Find desired file
+        file_entry = next((f for f in files_info if f["key"] == filename), None)
+        if not file_entry:
+            raise FileNotFoundError(f"{filename} not found in Zenodo record {record_id}.")
+
+        file_url = file_entry["links"]["self"]
+
+        # Download
+        print(f"Downloading {filename} from {file_url}...")
+        urllib.request.urlretrieve(file_url, target_path)
         print(f"Download complete: {target_path}")
         return target_path
+
     except Exception as e:
-        print(f"Could not download {filename}. Error: {e}")
+        print(f"Failed to download {filename}: {e}")
         return None
     
 
