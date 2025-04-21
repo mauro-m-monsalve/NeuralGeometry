@@ -1,6 +1,7 @@
 import pandas as pd
 import pickle
 import gzip
+import urllib.request
 
 
 # Session metadata mapping
