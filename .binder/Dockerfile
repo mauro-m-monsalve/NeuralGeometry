@@ -1,25 +1,20 @@
 FROM jupyter/scipy-notebook:latest
 
-# Install required packages with conda (reflecting environment.yml)
+# Install required packages via conda
 RUN conda install -y -c conda-forge \
     python=3.10 \
-    numpy pandas scipy matplotlib plotly \
-    scikit-learn statsmodels tqdm \
-    ipykernel jupyter jupyterlab notebook \
-    nodejs ipywidgets jupyterlab_widgets jupyter_contrib_nbextensions \
-    xarray seaborn pot \
+    numpy pandas scipy matplotlib seaborn xarray \
+    plotly scikit-learn statsmodels tqdm \
+    ipykernel jupyterlab ipywidgets jupyterlab_widgets \
+    pot \
     && conda clean -afy
 
-# Set environment variables
+# Optional: memory environment variable for local use (Binder ignores this)
 ENV MEM_LIMIT=8G
 ENV PYTHONPATH=/home/jovyan
-
-# Copy the full repo into the container (Binder does this by default,
-# this line is a reminder if using Docker outside Binder)
-# COPY . /home/jovyan/
 
 # Set working directory
 WORKDIR /home/jovyan
 
-# Optional: pre-cache notebook outputs
+# Create a directory for figures
 RUN mkdir -p figures
