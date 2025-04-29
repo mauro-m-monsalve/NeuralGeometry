@@ -79,7 +79,44 @@ def get_pca(df, column='LFADS', cells=None, components=10, plot=True):
         fig.show()
 
 
-    return pca
+    return (pca,scaler)
+
+
+# --- PCA Inverse Reconstruction ---
+def inverse_pca(pca, data_reduced, scaler=None):
+    """
+    Reconstruct the full-dimensional neural activity from reduced PCA data.
+
+    Parameters:
+        pca (PCA object): The fitted PCA object returned by `get_pca`.
+        data_reduced (np.ndarray): PCA-reduced data of shape (components, ...),
+                                   where ... can be (time,), (time, trials), etc.
+                                   The first dimension must match n_components used in PCA.
+        scaler (StandardScaler or None): The scaler object used to center the original data.
+                                         If provided, its mean is added back to the reconstruction.
+
+    Returns:
+        np.ndarray: Reconstructed full-dimensional data of shape (full_dim, ...),
+                    where full_dim is the number of neurons and ... matches the shape of
+                    the remaining dimensions in `data_reduced`.
+    """
+    # Flatten all dimensions after the first (component) axis
+    trailing_shape = data_reduced.shape[1:]
+    reshaped = data_reduced.reshape(data_reduced.shape[0], -1)
+
+    # Remove PCA-added mean
+    mean_transformed = pca.transform(scaler.mean_.reshape(1, -1)) if scaler is not None else 0
+    reshaped = reshaped - mean_transformed.T
+
+    # Inverse transform to full neuron space
+    reconstructed = pca.inverse_transform(reshaped.T).T  # shape: full_dim x (time * trials)
+
+    # Add original mean back
+    if scaler is not None:
+        reconstructed = reconstructed + scaler.mean_[:, np.newaxis]
+
+    # Reshape to (full_dim, ...) matching the shape of data_reduced (after first axis)
+    return reconstructed.reshape((reconstructed.shape[0],) + trailing_shape)
 
 
 
@@ -508,7 +545,7 @@ def compute_unit_orthogonal_vectors(a, b, axis=0):
 
 
 
-def compute_geometry_measures(df, column='LFADS-PCA', timeres=10, arc_res=101):
+def compute_geometry_measures(df, column='LFADS-PCA', timeres=10, arc_res=101, w_curvature=5, sigma_tortuosity=75):
     """
     Computes geometric measures and interpolates them along normalized arc-length.
 
@@ -559,8 +596,8 @@ def compute_geometry_measures(df, column='LFADS-PCA', timeres=10, arc_res=101):
         df.at[idx, 'Time-Arc'] = interp(time)
 
         # Curvature and Tortuosity computations
-        curvature = K(df.at[idx, f'{column}-Arc'], w=5)
-        tortuosity = Tortuosity(curvature)
+        curvature = K(df.at[idx, f'{column}-Arc'], w=w_curvature)
+        tortuosity = Tortuosity(curvature,smoothing_sigma=sigma_tortuosity)
 
         df.at[idx, 'Curvature-Arc'] = curvature
         df.at[idx, 'Tortuosity-Arc'] = tortuosity
@@ -614,8 +651,10 @@ def get_components(df,
     """
 
     # Initialize output columns
-    df[f"{name}Projection"] = None
-    df[f"{name}SquareProjection"] = None
+    if f"{name}Projection" not in df.columns:
+        df[f"{name}Projection"] = None
+    if f"{name}SquareProjection" not in df.columns:
+        df[f"{name}SquareProjection"] = None
 
     combined_condition = np.logical_and.reduce(conditions)
 
@@ -748,3 +787,40 @@ def local_average(df, column, behavioral_axis='RT', frac=0.5, ba_res=101, method
  
     return interpolated_array, behavioral_axis_new
 
+
+
+
+# --- Arc-length-based interpolation utility ---
+def reparametrize_to_arc(df, column):
+    """
+    Interpolates data in df[column] along the normalized arc-length in df['Arc-Length'].
+    Adds a new column f'{column}-Arc' with cubic interpolation on a fixed arc axis.
+    Outside the original arc range, fills with NaN (no extrapolation).
+
+    Parameters:
+        df (pd.DataFrame): DataFrame with at least columns [column] and 'Arc-Length'.
+        column (str): Name of the column to interpolate (can be 1D or 2D arrays per row).
+
+    Returns:
+        None. Adds a new column f'{column}-Arc' to df with shape (..., 101)
+    """
+    import numpy as np
+    import scipy.interpolate
+    arc_axis = np.linspace(0, 1, 101)
+    new_col = f'{column}-Arc'
+    df[new_col] = [None] * len(df)
+    for idx, row in df.iterrows():
+        y = row[column]
+        arc = row['Arc-Length']
+        # skip if data missing
+        if y is None or arc is None:
+            df.at[idx, new_col] = None
+            continue
+        # 1D or 2D: always interpolate along last axis
+        try:
+            interp_func = scipy.interpolate.interp1d(
+                arc, y, axis=-1, kind='cubic', fill_value=np.nan, bounds_error=False
+            )
+            df.at[idx, new_col] = interp_func(arc_axis)
+        except Exception:
+            df.at[idx, new_col] = None

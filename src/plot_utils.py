@@ -1,3 +1,182 @@
+
+# ---- Local Fit Grid Plotting ----
+def plot_local_fit(df, column='weights_uncertainty', **vf_plot_params):
+    """
+    Plot a grid of retinotopic heatmaps of local fit weights.
+
+    Parameters:
+        df: DataFrame with 'arc_center', 'rt_center', and specified weight column
+        column: str, column name in df to plot
+        vf_plot_params: dict, visualization parameters (shape, extent, cmap, smooth_sigma, zoom, targets, tin_radius)
+    Returns:
+        plotly.graph_objs.Figure: Figure with grid of heatmaps
+    """
+    import seaborn as sns
+    import matplotlib.colors as mcolors
+    from plotly.subplots import make_subplots
+    import plotly.graph_objects as go
+    import numpy as np
+    from scipy.ndimage import gaussian_filter, zoom as nd_zoom
+
+    shape = vf_plot_params['shape']
+    extent = vf_plot_params['extent']
+    smooth_sigma = vf_plot_params.get('smooth_sigma', None)
+    zoom_factor = vf_plot_params.get('zoom', None)
+    targets = vf_plot_params.get('targets', None)
+    tin_radius = vf_plot_params.get('tin_radius', None)
+
+    Nx, Ny = shape
+    X_extent, Y_extent = extent
+
+    # Extract unique centers and sort
+    arc_centers = np.sort(df['arc_center'].unique())
+    rt_centers = np.sort(df['rt_center'].unique())[::-1]  # reverse for display (high on top)
+    n_arc = len(arc_centers)
+    n_rt = len(rt_centers)
+
+    x_coords = np.linspace(-X_extent / 2, X_extent / 2, Nx)
+    y_coords = np.linspace(-Y_extent / 2, Y_extent / 2, Ny)
+
+    fig = make_subplots(
+        rows=n_rt, cols=n_arc,
+        horizontal_spacing=0.005,
+        vertical_spacing=0.005,
+        x_title="Arc-Length Center",
+        y_title="RT Center"
+    )
+
+    # Icefire colorscale centered at 0
+    icefire_colors = sns.color_palette("icefire", as_cmap=False, n_colors=256)
+    colorscale = [[i / 255, mcolors.rgb2hex(c)] for i, c in enumerate(icefire_colors)]
+
+    for i, rt in enumerate(rt_centers):
+        for j, arc in enumerate(arc_centers):
+            match = df[(df['arc_center'] == arc) & (df['rt_center'] == rt)]
+            if match.empty:
+                continue
+            # Expect the column to contain a flat array of length Nx*Ny or an array that can be reshaped
+            Z = np.array(match.iloc[0][column]).reshape(Nx, Ny)
+            Z = np.flipud(Z)
+
+            if zoom_factor is not None:
+                Z = nd_zoom(Z, zoom=zoom_factor, order=1)
+
+            if smooth_sigma is not None:
+                Nx_new, Ny_new = Z.shape
+                sigma_x = smooth_sigma * (Nx_new / X_extent)
+                sigma_y = smooth_sigma * (Ny_new / Y_extent)
+                Z = gaussian_filter(Z, sigma=[sigma_x, sigma_y])
+
+            # Recompute axes for new shape
+            x_plot = np.linspace(-X_extent / 2, X_extent / 2, Z.shape[0])
+            y_plot = np.linspace(-Y_extent / 2, Y_extent / 2, Z.shape[1])
+
+            fig.add_trace(go.Heatmap(
+                z=Z,
+                x=x_plot,
+                y=y_plot,
+                colorscale=colorscale,
+                zmid=0,
+                showscale=False
+            ), row=i+1, col=j+1)
+
+            # Add peak annotation
+            import scipy
+            peak_val = scipy.linalg.norm(Z)
+            fig.add_annotation(
+                text=f"L2 Norm: {peak_val:.1f}",
+                xref=f"x{(i)*n_arc + j + 1}",
+                yref=f"y{(i)*n_arc + j + 1}",
+                x=x_plot[-1],
+                y=y_plot[-1],
+                showarrow=False,
+                font=dict(size=10, color="white"),
+                xanchor='right',
+                yanchor='top',
+                row=i+1, col=j+1
+            )
+
+            # Add targets (if provided)
+            if targets:
+                for t in targets:
+                    tx, ty = t['center']
+                    fig.add_trace(go.Scatter(
+                        x=[tx], y=[ty],
+                        mode='markers',
+                        marker=dict(
+                            size=6,
+                            color='white',
+                            line=dict(color='gray', width=1)
+                        ),
+                        showlegend=False,
+                        hoverinfo='text',
+                        text=[t.get('name', '')]
+                    ), row=i+1, col=j+1)
+
+                    if tin_radius is not None:
+                        theta = np.linspace(0, 2*np.pi, 100)
+                        circle_x = tx + tin_radius * np.cos(theta)
+                        circle_y = ty + tin_radius * np.sin(theta)
+                        circle_color = mcolors.to_hex(
+                            mcolors.to_rgb(
+                                mcolors.XKCD_COLORS.get(f'xkcd:{t.get("color", "white")}', 'white')
+                            )
+                        )
+                        fig.add_trace(go.Scatter(
+                            x=circle_x, y=circle_y,
+                            mode='lines',
+                            line=dict(color=circle_color, width=2),
+                            showlegend=False,
+                            hoverinfo='skip'
+                        ), row=i+1, col=j+1)
+
+            fig.update_xaxes(
+                visible=False, scaleanchor=f"y{(i)*n_arc + j + 1}", constrain='domain', row=i+1, col=j+1
+            )
+            fig.update_yaxes(
+                visible=False, constrain='domain', row=i+1, col=j+1
+            )
+
+    fig.update_layout(
+        height=130 * n_rt + 40,
+        width=130 * n_arc + 40,
+        title=f"Retinotopic Local Fits — {column}",
+        margin=dict(l=60, r=20, t=40, b=60),
+        template="plotly_white"
+    )
+
+    # Arc center labels (columns)
+    for j, arc in enumerate(arc_centers):
+        fig.add_annotation(
+            text=f"{arc:.2f}",
+            x=(j + 0.5) / n_arc,
+            y=0.00,
+            xref='paper',
+            yref='paper',
+            showarrow=False,
+            xanchor='center',
+            yanchor='top',
+            font=dict(size=12)
+        )
+
+    # RT center labels (rows)
+    for i, rt in enumerate(rt_centers):
+        fig.add_annotation(
+            text=f"{rt:.2f}",
+            x=-0.01,
+            y=(n_rt - i - 0.5) / n_rt,
+            xref='paper',
+            yref='paper',
+            showarrow=False,
+            xanchor='right',
+            yanchor='middle',
+            font=dict(size=12)
+        )
+
+    return fig
+
+
+
 import numpy as np
 import plotly.graph_objects as go
 from matplotlib.colors import LinearSegmentedColormap, to_rgb, rgb2hex
@@ -84,16 +263,34 @@ def plot_local_average(data, behavioral_axis=None, arc_length_axis=None, top_col
         )
 
     # Bottom panel: Heatmap (y-axis flipped)
-    fig.add_trace(
-        go.Heatmap(
-            z=np.flipud(smoothed_data.T),
-            x=arc_length_axis,
-            y=behavioral_axis[::-1],
-            colorscale=heatmap_scale,
-            colorbar=dict(title=var_name)
-        ),
-        row=2, col=1
-    )
+    # Special handling for 'icefire' colorscale
+    if heatmap_scale == 'icefire':
+        import seaborn as sns
+        from matplotlib import colors as mcolors
+        icefire_colors = sns.color_palette("icefire", as_cmap=False, n_colors=256)
+        icefire_colorscale = [[i / 255, mcolors.rgb2hex(c)] for i, c in enumerate(icefire_colors)]
+        fig.add_trace(
+            go.Heatmap(
+                z=np.flipud(smoothed_data.T),
+                x=arc_length_axis,
+                y=behavioral_axis[::-1],
+                colorscale=icefire_colorscale,
+                colorbar=dict(title=var_name),
+                zmid=0
+            ),
+            row=2, col=1
+        )
+    else:
+        fig.add_trace(
+            go.Heatmap(
+                z=np.flipud(smoothed_data.T),
+                x=arc_length_axis,
+                y=behavioral_axis[::-1],
+                colorscale=heatmap_scale,
+                colorbar=dict(title=var_name)
+            ),
+            row=2, col=1
+        )
 
     fig.update_xaxes(range=[arc_length_axis.min(), arc_length_axis.max()], row=2, col=1)
     fig.update_yaxes(range=[behavioral_axis.min(), behavioral_axis.max()], row=2, col=1, autorange=False)
@@ -211,7 +408,7 @@ def plot_local_average_pop(manifolds, behavioral_axes, axis_names=['PC1 (Hz)', '
     return fig
 
 
-def plot_violin(df, var='RT', group_by='motion_coherence', color_by='choice', colors=None):
+def plot_violin(df, var='RT', group_by='motion_coherence', color_by='choice', colors=None, connect_medians=False, fig_size=(800,500)):
 
     df = df.copy()
     df[group_by] = df[group_by].astype(str)  # Treat group_by as categorical
@@ -246,6 +443,27 @@ def plot_violin(df, var='RT', group_by='motion_coherence', color_by='choice', co
                 width=offset
             ))
 
+    # Add median lines per color category
+    if connect_medians:
+        for j, choice in enumerate(unique_choices):
+            medians = []
+            x_positions = []
+            for i, group in enumerate(unique_groups):
+                group_data = df[(df[group_by] == group) & (df[color_by] == choice)]
+                if not group_data.empty:
+                    medians.append(group_data[var].median())
+                    x_pos = i + (j - (n_choices - 1) / 2) * offset
+                    x_positions.append(x_pos)
+            if x_positions and medians:
+                fig.add_trace(go.Scatter(
+                    x=x_positions,
+                    y=medians,
+                    mode='lines',
+                    line=dict(color=color_map[choice], width=2),
+                    name=f"{choice} Median",
+                    showlegend=False
+                ))
+
     fig.update_layout(
         title=f"Distribution of {var} grouped by {group_by} and colored by {color_by}",
         yaxis_title=var,
@@ -257,11 +475,11 @@ def plot_violin(df, var='RT', group_by='motion_coherence', color_by='choice', co
         ),
         template="plotly_white",
         violinmode='overlay',
-        width=800,
-        height=500
+        width=fig_size[0],
+        height=fig_size[1]
     )
-
-    fig.show()
+ 
+    return fig
 
 def plot_retinotopic_2d_hist(df, bin_size=0.1, percentile=10, session='S6'):
     """
@@ -934,6 +1152,7 @@ def plot_pop_selectivity_scatter(cs_df, pops, arc=0.75, percentile=10, cell_rang
     contra_slow_all, contra_fast_all = [], []
     ipsi_slow_all, ipsi_fast_all = [], []
     js_labels = []
+    choices = pops['choice'].unique()
 
     for idx, row in cs_df.iterrows():
         cs = row['choice_selectivity']   # shape: (neurons, arc, RT)
@@ -959,8 +1178,8 @@ def plot_pop_selectivity_scatter(cs_df, pops, arc=0.75, percentile=10, cell_rang
         cell_ranges.extend(cell_range[valid])
 
         # Compute pop_locav based hover data for this session
-        pop_contra = pops[(pops['session'] == session) & (pops['choice'] == 0)].iloc[0]['pop_locav']
-        pop_ipsi = pops[(pops['session'] == session) & (pops['choice'] == 1)].iloc[0]['pop_locav']
+        pop_contra = pops[(pops['session'] == session) & (pops['choice'] == choices[0])].iloc[0]['pop_locav']
+        pop_ipsi = pops[(pops['session'] == session) & (pops['choice'] == choices[1])].iloc[0]['pop_locav']
         rt_len_pop = pop_contra.shape[-1]
         n_pop = max(1, int(rt_len_pop * percentile / 100))
         contra_slow = np.mean(pop_contra[:, :,-n_pop:], axis=2)
@@ -1291,4 +1510,406 @@ def plot_response_fields(ds, cells='TinC', n_columns=10, sort=None):
     )
     fig.show()
 
+
+
+
+# ---- Manifold Population Retinotopy Plotting ----
+def plot_manifold_retinotopy(pop_matrix, shape, extent, n_points, new_behavioral_axis,
+                             nba_name='RT', cmap='inferno', targets=None, tin_radius=3, title="Retinotopic Manifold Representation"):
+    """
+    Plot a grid of heatmaps over space from population activity.
+
+    Parameters:
+        pop_matrix: np.ndarray of shape (pixels, arc_length, behavioral_axis)
+        shape: tuple (Nx, Ny) to reshape pixels into 2D spatial field
+        extent: list [X, Y] defining real-space extent (-X/2 to X/2, -Y/2 to Y/2)
+        n_points: tuple (n_arc, n_rt), number of points to sample in arc and RT dimensions
+        new_behavioral_axis: np.ndarray, values along behavioral axis (e.g., RT)
+        nba_name: str, label for behavioral axis
+        cmap: str, colormap name (use 'icefire' for divergent map centered at 0)
+        targets: list of dicts with keys 'center', 'name', 'color'
+        tin_radius: float, radius of visual target in pixels
+        title: str, title for the plot
+    """
+    import plotly.subplots as sp
+    from plotly.graph_objects import Heatmap, Scatter
+    import seaborn as sns
+
+    assert pop_matrix.ndim == 3, "Input must be (pixels, arc, RT)"
+    Nx, Ny = shape
+    X_extent, Y_extent = extent
+    n_arc, n_rt = n_points
+
+    arc_vals = np.linspace(0, pop_matrix.shape[1] - 1, n_arc).astype(int)
+    rt_vals = np.linspace(0, pop_matrix.shape[2] - 1, n_rt).astype(int)
+    # Reverse the order of rt_vals at the beginning of the outer loop
+    rt_vals = rt_vals[::-1]
+
+    x_coords = np.linspace(-X_extent / 2, X_extent / 2, Nx)
+    y_coords = np.linspace(-Y_extent / 2, Y_extent / 2, Ny)
+
+    n_rows = n_rt
+    n_cols = n_arc
+    fig = sp.make_subplots(
+        rows=n_rows, cols=n_cols,
+        horizontal_spacing=0.005, vertical_spacing=0.005,
+        x_title='Arc-Length',
+        y_title=nba_name
+    )
+
+    if cmap == 'icefire':
+        from matplotlib import colors as mcolors
+        icefire_colors = sns.color_palette("icefire", as_cmap=False, n_colors=256)
+        colorscale = [[i / 255, mcolors.rgb2hex(c)] for i, c in enumerate(icefire_colors)]
+        zmid = 0
+    else:
+        colorscale = cmap
+        zmid = None
+
+    for i, rt_idx in enumerate(rt_vals):
+        for j, arc_idx in enumerate(arc_vals):
+            z = pop_matrix[:, arc_idx, rt_idx].reshape(Nx, Ny)
+            z = np.flipud(z)
+
+            fig.add_trace(Heatmap(
+                z=z,
+                x=x_coords,
+                y=y_coords,
+                colorscale=colorscale,
+                zmid=zmid,
+                showscale=False
+            ), row=i+1, col=j+1)
+
+            # Add peak annotation
+            peak_val = np.nanmax(z)
+            fig.add_annotation(
+                text=f"{peak_val:.1f}",
+                xref=f"x{(i)*n_cols + j + 1}",
+                yref=f"y{(i)*n_cols + j + 1}",
+                x=x_coords[-1],
+                y=y_coords[-1],
+                showarrow=False,
+                font=dict(size=10, color="white"),
+                xanchor='right',
+                yanchor='top',
+                row=i+1, col=j+1
+            )
+
+            if targets:
+                for t in targets:
+                    tx, ty = t['center']
+                    # Always draw the marker in white
+                    fig.add_trace(Scatter(
+                        x=[tx], y=[ty],
+                        mode='markers',
+                        marker=dict(
+                            size=6,
+                            color='white',
+                            line=dict(color='gray', width=1)
+                        ),
+                        showlegend=False,
+                        hoverinfo='text',
+                        text=[t.get('name', '')]
+                    ), row=i+1, col=j+1)
+
+                    if tin_radius is not None:
+                        theta = np.linspace(0, 2*np.pi, 100)
+                        circle_x = tx + tin_radius * np.cos(theta)
+                        circle_y = ty + tin_radius * np.sin(theta)
+                        import matplotlib.colors as mcolors
+                        # Use XKCD_COLORS dict and fallback to white if not found
+                        circle_color = mcolors.to_hex(
+                            mcolors.to_rgb(
+                                mcolors.XKCD_COLORS.get(f'xkcd:{t.get("color", "white")}', 'white')
+                            )
+                        )
+                        fig.add_trace(Scatter(
+                            x=circle_x, y=circle_y,
+                            mode='lines',
+                            line=dict(color=circle_color, width=2),
+                            showlegend=False,
+                            hoverinfo='skip'
+                        ), row=i+1, col=j+1)
+
+            # Enforce equal aspect ratio for each heatmap
+            fig.update_xaxes(
+                visible=False, scaleanchor=f"y{(i)*n_cols + j + 1}", constrain='domain', row=i+1, col=j+1
+            )
+            fig.update_yaxes(
+                visible=False, constrain='domain', row=i+1, col=j+1
+            )
+
+    fig.update_layout(
+        height=130 * n_rows + 40,
+        width=130 * n_cols + 40,
+        title=title,
+        margin=dict(l=60, r=20, t=40, b=60),
+        template="plotly_white"
+    )
+
+    # Add axis labels outside the heatmap grid
+    # Arc labels (columns, x-axis)
+    for j, arc_idx in enumerate(arc_vals):
+        fig.add_annotation(
+            text=f"{arc_idx / (pop_matrix.shape[1] - 1):.2f}",
+            x=(j + 0.5) / n_cols,
+            y=-0.03,
+            xref='paper',
+            yref='paper',
+            showarrow=False,
+            xanchor='center',
+            yanchor='top',
+            font=dict(size=12)
+        )
+
+    # RT (nba) labels (rows, y-axis)
+    for i, rt_idx in enumerate(rt_vals):
+        fig.add_annotation(
+            text=f"{new_behavioral_axis[rt_idx]:.0f}",
+            x=-0.01,
+            y=(n_rows - i - 0.5) / n_rows,
+            xref='paper',
+            yref='paper',
+            showarrow=False,
+            xanchor='right',
+            yanchor='middle',
+            font=dict(size=12)
+        )
+
+    return fig
+
+
+
+
+# ---- Retinotopy Property Plotting ----
+def plot_property_retinotopy(property, shape, extent, cmap='earth_r', contour=False, title='Retinotopy of Property',
+                             targets=None, tin_radius=None, smooth_sigma=None, zoom=None):
+    """
+    Plot a 2D heatmap or contour map of a spatial property over retinotopic space.
+
+    Parameters:
+        property: 1D array of shape (Nx * Ny,) representing the unrolled 2D property map
+        shape: tuple (Nx, Ny), grid shape to reshape the property
+        extent: list [X, Y], real-space extent (-X/2 to X/2 and -Y/2 to Y/2)
+        cmap: str, colormap name. 'icefire' supported via seaborn
+        contour: bool, whether to plot a contour map instead of heatmap
+        title: str, title of the plot
+        targets: list of dicts with keys 'center', 'name', 'color'
+        tin_radius: float, radius of target circles
+    """
+    import seaborn as sns
+    from matplotlib import colors as mcolors
+    from plotly.graph_objects import Heatmap, Contour, Scatter
+
+    Nx, Ny = shape
+    X_extent, Y_extent = extent
+    Z = property.reshape(Nx, Ny)
+    Z = np.flipud(Z)  # for consistent orientation
+
+    # Move zoom block above smoothing and apply zoom to Z before smoothing
+    if zoom is not None:
+        from scipy.ndimage import zoom as nd_zoom
+        Z = nd_zoom(Z, zoom=zoom, order=1)
+
+    if smooth_sigma is not None:
+        from scipy.ndimage import gaussian_filter
+        # Convert smooth_sigma in dva to bins
+        # Use the updated Z.shape after zoom
+        Nx, Ny = Z.shape
+        sigma_x = smooth_sigma * (Nx / X_extent)
+        sigma_y = smooth_sigma * (Ny / Y_extent)
+        Z = gaussian_filter(Z, sigma=[sigma_x, sigma_y])
+
+    Nx, Ny = Z.shape
+    X_extent, Y_extent = extent
+
+    x_coords = np.linspace(-X_extent / 2, X_extent / 2, Nx)
+    y_coords = np.linspace(-Y_extent / 2, Y_extent / 2, Ny)
+
+    if cmap == 'icefire':
+        icefire_colors = sns.color_palette("icefire", as_cmap=False, n_colors=256)
+        colorscale = [[i / 255, mcolors.rgb2hex(c)] for i, c in enumerate(icefire_colors)]
+        zmid = 0.0
+        zmin = None
+        zmax = None
+    elif cmap == 'earth_r':
+        colorscale = cmap
+        zmid = 0.5
+        zmin = 0.0
+        zmax = 1.0
+    else:
+        colorscale = cmap
+        zmid = None
+        zmin = np.nanmin(Z)
+        zmax = np.nanmax(Z)
+
+    trace = Contour if contour else Heatmap
+    if contour:
+        plot_trace = trace(
+            z=Z,
+            x=x_coords,
+            y=y_coords,
+            colorscale=colorscale,
+            zmid=zmid,
+            zmin=zmin if cmap != 'icefire' else None,
+            zmax=zmax if cmap != 'icefire' else None,
+            showscale=True,
+            contours=dict(
+                start=zmin,
+                end=zmax,
+                size=(zmax - zmin) / 10
+            ) if cmap == 'earth_r' else None,
+        )
+    else:
+        plot_trace = trace(
+            z=Z,
+            x=x_coords,
+            y=y_coords,
+            colorscale=colorscale,
+            zmid=zmid,
+            showscale=True
+        )
+
+    fig = go.Figure()
+    fig.add_trace(plot_trace)
+
+    if targets:
+        for t in targets:
+            tx, ty = t['center']
+            fig.add_trace(Scatter(
+                x=[tx], y=[ty],
+                mode='markers',
+                marker=dict(
+                    size=10,
+                    color='white',
+                    line=dict(color='gray', width=1)
+                ),
+                showlegend=False,
+                hoverinfo='text',
+                text=[t.get('name', '')]
+            ))
+            if tin_radius is not None:
+                theta = np.linspace(0, 2 * np.pi, 100)
+                circle_x = tx + tin_radius * np.cos(theta)
+                circle_y = ty + tin_radius * np.sin(theta)
+                circle_color = mcolors.to_hex(
+                    mcolors.to_rgb(
+                        mcolors.XKCD_COLORS.get(f'xkcd:{t.get("color", "white")}', 'white')
+                    )
+                )
+                fig.add_trace(Scatter(
+                    x=circle_x, y=circle_y,
+                    mode='lines',
+                    line=dict(color=circle_color, width=2),
+                    showlegend=False,
+                    hoverinfo='skip'
+                ))
+
+    fig.update_layout(
+        title=title,
+        width=500,
+        height=500,
+        template='plotly_white',
+        xaxis=dict(
+            showgrid=False,
+            visible=False,
+            scaleanchor='y',
+            scaleratio=1
+        ),
+        yaxis=dict(
+            showgrid=False,
+            visible=False
+        ),
+        margin=dict(l=20, r=20, t=40, b=20)
+    )
+    return fig
+
+
+
+
+# ---- Evidence Modulation Plotting ----
+def plot_evidence_modulation(df_fit, left_col='ev_mod_resolution', right_col='ev_mod_uncertainty'):
+    """
+    Plot two side-by-side heatmaps of ev_mod_resolution and ev_mod_uncertainty 
+    based on the window coordinates (arc_center x rt_center).
+
+    Parameters:
+        df_fit: DataFrame containing 'arc_center', 'rt_center', and ev_mod columns
+        left_col: str, column name for left heatmap
+        right_col: str, column name for right heatmap
+    """
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+    import numpy as np
+
+    arc_centers = np.sort(df_fit['arc_center'].unique())
+    rt_centers = np.sort(df_fit['rt_center'].unique())
+
+    arc_to_idx = {arc: i for i, arc in enumerate(arc_centers)}
+    rt_to_idx = {rt: i for i, rt in enumerate(rt_centers)}
+
+    size_x = len(arc_centers)
+    size_y = len(rt_centers)
+
+    left_grid = np.full((size_y, size_x), np.nan)
+    right_grid = np.full((size_y, size_x), np.nan)
+
+    for _, row in df_fit.iterrows():
+        i = rt_to_idx[row['rt_center']]
+        j = arc_to_idx[row['arc_center']]
+        left_grid[i, j] = row[left_col]
+        right_grid[i, j] = row[right_col]
+
+    vmax = np.nanmax([left_grid, right_grid])
+
+    fig = make_subplots(rows=1, cols=2, shared_yaxes=True, subplot_titles=[left_col, right_col])
+
+    for idx, (grid, title) in enumerate(zip([left_grid, right_grid], [left_col, right_col]), start=1):
+        fig.add_trace(go.Heatmap(
+            z=grid,
+            x=arc_centers,
+            y=rt_centers,
+            colorscale='Viridis',
+            zmin=0,
+            zmax=vmax,
+            showscale=True,
+            colorbar=dict(title='Projection', len=0.8),
+            text=[[f"{val:.2f}" if not np.isnan(val) else "" for val in row] for row in grid],
+            hoverinfo="text"
+        ), row=1, col=idx)
+
+    fig.update_layout(
+        title="Projections of Local Input Weights into the Global Evidence Direction",
+        width=800,
+        height=400,
+        template="plotly_white",
+        margin=dict(l=50, r=50, t=50, b=50)
+    )
+
+    # Set x-axis ticks to arc_centers and y-axis ticks to rt_centers
+    arc_tickvals = arc_centers
+    arc_ticktext = [f"{v:.2f}" for v in arc_centers]
+    rt_tickvals = rt_centers
+    rt_ticktext = [f"{v:.2f}" for v in rt_centers]
+
+    fig.update_xaxes(
+        title_text="Arc Center", 
+        tickvals=arc_tickvals, 
+        ticktext=arc_ticktext,
+        row=1, col=1
+    )
+    fig.update_xaxes(
+        title_text="Arc Center", 
+        tickvals=arc_tickvals, 
+        ticktext=arc_ticktext,
+        row=1, col=2
+    )
+    fig.update_yaxes(
+        title_text="RT Center", 
+        tickvals=rt_tickvals, 
+        ticktext=rt_ticktext,
+        row=1, col=1
+    )
+
+    fig.show()
 

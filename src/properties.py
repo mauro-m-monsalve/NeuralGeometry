@@ -645,7 +645,7 @@ def compute_saccade_shift_statistics(df, percentile=10, p_lim=0.05, use_targets=
         pd.DataFrame with one row per (session, choice) with:
             - target_distance
             - 2D Wasserstein distance + significance
-            - KS statistics for projections on the target line (one-sided, testing if slow saccades are inbetween fast and the other target) and orthogonal to the target line (two-sided, testing if slow and fast are different) + significances
+            - KS statistics for projections on the interchoice line (one-sided, testing if slow saccades are inbetween fast and the other target) and orthogonal to the target line (two-sided, testing if slow and fast are different) + significances
     """
 
     df_trans = coordinate_transformation(df, use_targets=use_targets)
@@ -722,20 +722,45 @@ def compute_saccade_shift_statistics(df, percentile=10, p_lim=0.05, use_targets=
             results.append({
                 'session': session,
                 'choice': choice,
-                'target_distance': target_dist,
+                'target_distance (dva)': target_dist,
                 'n_samples': min(len(slow_xy), len(fast_xy)),
                 'wasserstein_2d': wass2d,
                 'wasserstein_significant': wass_signif,
-                'KS_on_target_line': ks_x,
-                'KS_on_target_line_significant': p_x < p_lim,
-                'KS_off_target_line': ks_y,
-                'KS_off_target_line_significant': p_y < p_lim
+                'KS_on_interchoice_line': ks_x,
+                'KS_on_interchoice_line_significant': p_x < p_lim,
+                'KS_off_interchoice_line': ks_y,
+                'KS_off_interchoice_line_significant': p_y < p_lim
             })
 
     return pd.DataFrame(results)
 
 
 
+# --- Population-level choice selectivity extraction ---
+def get_pop_cs(cs_df, session='S6', arc=0.9, percentile=1):
+    """
+    Extract population-level choice selectivity for a given session at a specified arc length and RT percentile.
 
+    Parameters:
+        cs_df: pandas DataFrame with multi-session choice selectivity results
+        session: str, session identifier (e.g., 'S6')
+        arc: float, arc length value (between 0 and 1)
+        percentile: float, percentile for fast and slow RT grouping
 
+    Returns:
+        tuple: (cs_slow, cs_fast), each of shape (neurons,)
+    """
+    df_sess = cs_df[cs_df['session'] == session]
+    if df_sess.empty:
+        raise ValueError(f"No data found for session {session}")
 
+    cs = df_sess['choice_selectivity'].values[0]  # shape (neurons, arc, RT)
+    arc_axis = np.linspace(0, 1, cs.shape[1])
+    arc_idx = np.argmin(np.abs(arc_axis - arc))
+    rt_len = cs.shape[2]
+    bins = max(1, int(rt_len * percentile / 100))
+
+    cs_slow = np.nanmean(cs[:, arc_idx, -bins:], axis=1)
+    cs_fast = np.nanmean(cs[:, arc_idx, :bins], axis=1)
+
+    return cs_slow, cs_fast
