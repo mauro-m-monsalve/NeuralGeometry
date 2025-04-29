@@ -1,5 +1,6 @@
 name: neuralgeometry
 channels:
+  - pytorch
   - conda-forge
 dependencies:
   - python=3.10
@@ -22,4 +23,4 @@ dependencies:
   - notebook
   - xarray
   - seaborn
-  - torch
+  - pytorch
