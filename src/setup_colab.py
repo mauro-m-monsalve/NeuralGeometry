@@ -1,6 +1,3 @@
-
-
-
 import os
 import subprocess
 import sys
@@ -43,15 +40,23 @@ os.chdir("NeuralGeometry")
 env_path = "environment.yml"
 if os.path.exists(env_path):
     with open(env_path, "r") as f:
+        deps_section = False
         for line in f:
             line = line.strip()
-            if not line or line.startswith("#") or ":" in line:
+            if line.startswith("dependencies:"):
+                deps_section = True
                 continue
-            # Convert conda-style to pip-style specifier if needed
-            package = re.sub(r"=+", "==", line)
-            try:
-                run(f"{sys.executable} -m pip install --quiet {package}")
-            except subprocess.CalledProcessError:
-                print(f"⚠️ Failed to install: {package}")
+            if deps_section:
+                if line.startswith("- "):
+                    pkg = line[2:].strip()
+                    if not pkg or pkg.startswith("python=") or pkg.startswith("#"):
+                        continue
+                    pip_pkg = re.sub(r"=+", "==", pkg)
+                    try:
+                        run(f"{sys.executable} -m pip install --quiet {pip_pkg}")
+                    except subprocess.CalledProcessError:
+                        print(f"⚠️ Failed to install: {pip_pkg}")
+                elif not line.startswith(" "):
+                    break  # Stop if we reach another section
 
 print("✅ Colab GPU setup complete.")
