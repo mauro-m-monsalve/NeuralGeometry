@@ -29,8 +29,7 @@ if not in_colab():
     sys.exit(0)
 
 if not has_gpu():
-    print("❌ GPU is not available in this Colab runtime. Please enable GPU under Runtime > Change runtime type.")
-    sys.exit(1)
+    raise RuntimeError("❌ GPU is not available in this Colab runtime. Please enable GPU under Runtime > Change runtime type.")
 
 # 1. Clone the repository if not already present
 if not os.path.exists("NeuralGeometry"):
