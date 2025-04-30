@@ -29,12 +29,18 @@ if not has_gpu():
     print("❌ GPU is not available in this Colab runtime. Please enable GPU under Runtime > Change runtime type.")
     sys.exit(1)
 
+repo_url = "https://github.com/mauro-m-monsalve/NeuralGeometry.git"
+repo_dir = "/content/NeuralGeometry"
+
 # 1. Clone the repository if not already present
-if not os.path.exists("NeuralGeometry"):
-    run("git clone https://github.com/mauro-m-monsalve/NeuralGeometry.git")
+if not os.path.exists(repo_dir):
+    run(f"git clone {repo_url} {repo_dir}")
 
 # 2. Change working directory
-os.chdir("NeuralGeometry")
+if not os.path.isdir(repo_dir):
+    raise RuntimeError("❌ Failed to clone or detect the NeuralGeometry repo.")
+os.chdir(repo_dir)
+print(f"📁 Changed working directory to: {os.getcwd()}")
 
 # 3. Parse environment.yml if present and try pip-installing packages
 env_path = "environment.yml"
