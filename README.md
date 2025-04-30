@@ -52,7 +52,7 @@ Model simulations and visualizations can be run interactively using the provided
 
 To interactively run the notebooks on a GPU, open the Colab environment:
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mauro-m-monsalve/NeuralGeometry/blob/main/notebooks)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mauro-m-monsalve/NeuralGeometry)
 
 Open any notebook and enable GPU usage under `Runtime` → `Change runtime type`. Run every notebook cell one at a time or simply click `Runtime` → `Run all` to execute the whole notebook.
 
@@ -85,4 +85,4 @@ If you use this code or dataset, please cite:
 ### Quick Links
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15093133.svg)](https://doi.org/10.5281/zenodo.15093133)  
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mauro-m-monsalve/NeuralGeometry/blob/main/notebooks)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mauro-m-monsalve/NeuralGeometry)
