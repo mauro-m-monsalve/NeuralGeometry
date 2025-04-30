@@ -34,6 +34,20 @@ These files include firing rates, LFADS-inferred trajectories, trial metadata, a
 
 ---
 
+### Model Overview
+
+The repository also includes a computational `DecisionMakingModel` class that simulates neural population dynamics underlying decision processes. This model captures key features of the empirical data and provides a mechanistic framework to interpret neural geometry during decision-making.
+
+The model allows you to:  
+- Simulate neural trajectories reflecting evidence accumulation and decision resolution.  
+- Generate synthetic data with controlled parameters to test hypotheses about neural dynamics.  
+- Generalize decision-making to multiple targets and conditions (e.g. motion coherence, color coherence).  
+- Explore how changes in model parameters affect geometric signatures and manifold structure.
+
+Model simulations and visualizations can be run interactively using the provided notebooks, enabling comparison between model-generated and recorded neural data.
+
+---
+
 ### Run online in Google Colab
 
 To interactively run the notebooks on a GPU, open the Colab environment:
