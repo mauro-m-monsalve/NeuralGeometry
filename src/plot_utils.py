@@ -935,7 +935,7 @@ def plot_saccade_retinotopy(df, session='S6'):
 
 
 
-def plot_visual_field_choice_selectivity_difference(cs_df_session, ds,arc=0.9, percentile=10, cell_range_threshold=0.99, heat=18, mask=None):
+def plot_visual_field_choice_selectivity_difference(cs_df_session, ds,arc=0.9, percentile=10, cell_range_threshold=0.99, heat=18, mask=None, return_fig=False):
     """
     Compute and plot the weighted average response field using CS fast - slow as weights.
  
@@ -1024,6 +1024,9 @@ def plot_visual_field_choice_selectivity_difference(cs_df_session, ds,arc=0.9, p
                 showlegend=False
             ))
     fig.show()
+
+    if return_fig:
+        return fig
 
 
 def plot_proportion(df, choice='Contra', group_by='motion_coherence', targets='target', colors=None):
@@ -1133,7 +1136,7 @@ def plot_pop_selectivity_arcslice(df, session='S6', arc=0.75, cell_range_thresho
 
 
 
-def plot_pop_selectivity_scatter(cs_df, pops, arc=0.75, percentile=10, cell_range_threshold=1.0,open_interactive=True):
+def plot_pop_selectivity_scatter(cs_df, pops, arc=0.75, percentile=10, cell_range_threshold=1.0,open_interactive=True, return_fig=False):
     """
     Interactive scatter plot of population choice selectivity: slow vs fast RT bins.
     
@@ -1371,6 +1374,9 @@ def plot_pop_selectivity_scatter(cs_df, pops, arc=0.75, percentile=10, cell_rang
         height=400
     )
     fig_diff.show()
+
+    if return_fig:
+        return fig, fig_diff
 
 
 import xarray as xr
