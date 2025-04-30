@@ -43,17 +43,20 @@ if os.path.exists(env_path):
         deps_section = False
         for line in f:
             line = line.strip()
-            if line.startswith("dependencies:"):
+            if line.startswith("channels:") or line.startswith("- "):
+                continue
+            if line == "dependencies:":
                 deps_section = True
                 continue
             if deps_section:
-                if line.startswith("- "):
-                    pkg = line[2:].strip()
+                if line.lstrip().startswith("- "):
+                    pkg = line.lstrip()[2:].strip()
                     if not pkg or pkg.startswith("python=") or pkg.startswith("#"):
                         continue
                     pip_pkg = re.sub(r"=+", "==", pkg)
                     try:
-                        run(f"{sys.executable} -m pip install --quiet {pip_pkg}")
+                        if pkg and not pkg.startswith("-"):
+                            run(f"{sys.executable} -m pip install --quiet {pip_pkg}")
                     except subprocess.CalledProcessError:
                         print(f"⚠️ Failed to install: {pip_pkg}")
                 elif not line.startswith(" "):
