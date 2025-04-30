@@ -34,12 +34,13 @@ These files include firing rates, LFADS-inferred trajectories, trial metadata, a
 
 ---
 
-### Interactive Notebooks
+### Run online in Google Colab
 
-Launch the full repository in an interactive Binder session:  
-[mybinder.org/v2/gh/mauro-m-monsalve/NeuralGeometry/main](https://mybinder.org/v2/gh/mauro-m-monsalve/NeuralGeometry/main)
+To interactively run the notebooks on a GPU, open the Colab environment:
 
-Notebooks are located in the `notebooks/` folder. Open a notebook and click run -> run all cells to generate figures.
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mauro-m-monsalve/NeuralGeometry/blob/main/notebooks)
+
+Open any notebook and enable GPU usage under `Runtime` → `Change runtime type`. Run every notebook cell one at a time or simply click `Runtime` → `Run all` to execute the whole notebook.
 
 ---
 
@@ -70,4 +71,4 @@ If you use this code or dataset, please cite:
 ### Quick Links
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15093133.svg)](https://doi.org/10.5281/zenodo.15093133)  
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/mauro-m-monsalve/NeuralGeometry/main)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mauro-m-monsalve/NeuralGeometry/blob/main/notebooks)
