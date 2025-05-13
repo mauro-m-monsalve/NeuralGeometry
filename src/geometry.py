@@ -788,38 +788,39 @@ def local_average(df, column, behavioral_axis='RT', frac=0.5, ba_res=101, method
     return interpolated_array, behavioral_axis_new
 
 
-
-
-# --- Arc-length-based interpolation utility ---
-def reparametrize_to_arc(df, column):
+# --- Flexible Arc-length-based interpolation utility ---
+def reparametrize_to_arc(df, column, arc='Arc-Length', arc_points=101):
     """
-    Interpolates data in df[column] along the normalized arc-length in df['Arc-Length'].
-    Adds a new column f'{column}-Arc' with cubic interpolation on a fixed arc axis.
-    Outside the original arc range, fills with NaN (no extrapolation).
+    Reparametrize a time-based column to arc-length using cubic interpolation.
+    Assumes 'Arc-Length' column has already been computed (via compute_geometry_measures).
 
     Parameters:
-        df (pd.DataFrame): DataFrame with at least columns [column] and 'Arc-Length'.
-        column (str): Name of the column to interpolate (can be 1D or 2D arrays per row).
+        df (pd.DataFrame): DataFrame with trials.
+        column (str): Column to reparametrize (1D or 2D array per trial, time-based).
+        arc (str): Column containing the corresponding normalized arc-length per trial.
 
-    Returns:
-        None. Adds a new column f'{column}-Arc' to df with shape (..., 101)
+    Adds:
+        df[f'{column}-Arc']: Reparametrized array of shape (..., N), where N is the number of arc points.
     """
     import numpy as np
     import scipy.interpolate
-    arc_axis = np.linspace(0, 1, 101)
+
     new_col = f'{column}-Arc'
     df[new_col] = [None] * len(df)
+
+    arc_axis = np.linspace(0, 1, arc_points)
+
     for idx, row in df.iterrows():
         y = row[column]
-        arc = row['Arc-Length']
-        # skip if data missing
-        if y is None or arc is None:
+        arc_vals = row[arc]
+
+        if y is None or arc_vals is None:
             df.at[idx, new_col] = None
             continue
-        # 1D or 2D: always interpolate along last axis
+
         try:
             interp_func = scipy.interpolate.interp1d(
-                arc, y, axis=-1, kind='cubic', fill_value=np.nan, bounds_error=False
+                arc_vals, y, axis=-1, kind='cubic', fill_value=np.nan, bounds_error=False
             )
             df.at[idx, new_col] = interp_func(arc_axis)
         except Exception:

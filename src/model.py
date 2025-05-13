@@ -653,6 +653,9 @@ from src.geometry import uniformize
 def fit_local_linear_model(
     df,
     choice='Contra',
+    input='input-Arc',
+    res='ResolutionProjection',
+    unc='UncertaintyProjection',
     device='auto',
     arc_window_size=0.1,
     arc_window_step=0.1,
@@ -672,6 +675,7 @@ def fit_local_linear_model(
     Args:
         df (pd.DataFrame): DataFrame with 'choice', 'RT', 'input-Arc', 'ResolutionProjection', 'UncertaintyProjection', 'Arc-Length'.
         choice (str): Choice to filter (e.g., 'Contra').
+        input (str): Column name for the input data (e.g., 'input-Arc'). Of shape (Dims, ArcTime) per trial.
         device (str or torch.device): 'auto', 'cuda', 'mps', or 'cpu'.
         arc_window_size (float): Arc-length window size (fraction of [0,1]).
         arc_window_step (float): Arc-length step size (fraction of [0,1]).
@@ -705,9 +709,9 @@ def fit_local_linear_model(
     if len(dfc) == 0:
         raise ValueError(f"No rows for choice={choice}")
 
-    Input_Arc = np.stack([np.array(x) for x in dfc['input-Arc'].values])  # (trials, Npix, T)
-    ResolutionProjection = np.stack([np.array(x) for x in dfc['ResolutionProjection'].values])  # (trials, T)
-    UncertaintyProjection = np.stack([np.array(x) for x in dfc['UncertaintyProjection'].values])  # (trials, T)
+    Input_Arc = np.stack([np.array(x) for x in dfc[input].values])  # (trials, Npix, T)
+    ResolutionProjection = np.stack([np.array(x) for x in dfc[res].values])  # (trials, T)
+    UncertaintyProjection = np.stack([np.array(x) for x in dfc[unc].values])  # (trials, T)
     RT = uniformize(dfc['RT'].values)
 
     Input_Arc = torch.tensor(Input_Arc, dtype=torch.float32, device=device)
@@ -772,15 +776,17 @@ def fit_local_linear_model(
 
             total_loss += loss
 
-        # Regularization for spatial smoothness of input weights
-        penalty = 0
-        for i in range(num_windows):
-            w_res = w_input_resolution[i].view(D, D)
-            w_unc = w_input_uncertainty[i].view(D, D)
-            penalty += (torch.diff(w_res, n=2, dim=0)**2).sum() + (torch.diff(w_res, n=2, dim=1)**2).sum()
-            penalty += (torch.diff(w_unc, n=2, dim=0)**2).sum() + (torch.diff(w_unc, n=2, dim=1)**2).sum()
+        if lambda_derivative is not None:
+            # Regularization for spatial smoothness of input weights
+            penalty = 0
+            for i in range(num_windows):
+                w_res = w_input_resolution[i].view(D, D)
+                w_unc = w_input_uncertainty[i].view(D, D)
+                penalty += (torch.diff(w_res, n=2, dim=0)**2).sum() + (torch.diff(w_res, n=2, dim=1)**2).sum()
+                penalty += (torch.diff(w_unc, n=2, dim=0)**2).sum() + (torch.diff(w_unc, n=2, dim=1)**2).sum()
 
-        total_loss = total_loss + lambda_derivative * penalty
+            total_loss = total_loss + lambda_derivative * penalty
+
         loss_history.append(total_loss.item())
 
         current_loss = total_loss.item()

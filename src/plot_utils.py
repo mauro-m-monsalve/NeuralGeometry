@@ -1,4 +1,5 @@
 
+
 # ---- Local Fit Grid Plotting ----
 def plot_local_fit(df, column='weights_uncertainty', **vf_plot_params):
     """
@@ -1919,3 +1920,224 @@ def plot_evidence_modulation(df_fit, left_col='ev_mod_resolution', right_col='ev
 
     fig.show()
 
+
+
+# ---- Motion Network ----
+
+def plot_dot_motion(df, trial=None, frame_rate=75, scale_factor=None, axis_range=((-10,10),(-10,10))):
+    
+    """
+    Plot an animated movie of dot positions as scatter plots using Plotly.
+    Parameters:
+        df: DataFrame with a column 'dotsPos', each row is a list of frames (each frame is 2×N [x, y])
+        trial: int or None, which trial (row) to plot; defaults to 0
+        frame_rate: float, frame rate in Hz (used to compute frame duration)
+    """
+    import plotly.graph_objects as go
+
+    if trial is None:
+        trial = df[df['sCoh']==-0.512]['RT'].idxmax()
+
+    dot_frames = df.loc[trial]['dotsPos']
+    # Scale dot positions if scale_factor is provided
+    if scale_factor is not None:
+        # Apply scale to dot positions
+        scaled_dot_frames = []
+        for frame in dot_frames:
+            if frame:
+                x = np.array(frame[0]) * scale_factor
+                y = np.array(frame[1]) * scale_factor
+                scaled_dot_frames.append([x.tolist(), y.tolist()])
+            else:
+                scaled_dot_frames.append(frame)
+        dot_frames = scaled_dot_frames
+    n_frames = len(dot_frames)
+
+    # Extract target positions for the trial
+    targ1 = np.array(df.iloc[trial]['targ1Pos'])/10
+    targ2 = np.array(df.iloc[trial]['targ2Pos'])/10
+
+    if axis_range is not None:
+        (x_min, x_max), (y_min, y_max) = axis_range
+    else:
+        # Collect all dot coordinates across frames
+        x_all, y_all = [], []
+        for frame in dot_frames:
+            if frame:
+                x_all.extend(frame[0])
+                y_all.extend(frame[1])
+
+        # Add target positions
+        x_all.extend([targ1[0], targ2[0]])
+        y_all.extend([targ1[1], targ2[1]])
+
+        # Compute padded limits
+        pad = 2
+        x_min, x_max = min(x_all) - pad, max(x_all) + pad
+        y_min, y_max = min(y_all) - pad, max(y_all) + pad
+
+    frames = []
+    for t, frame in enumerate(dot_frames):
+        if frame:
+            x, y = frame
+        else:
+            x, y = [], []
+        frames.append(go.Frame(
+            data=[go.Scatter(
+                x=x, y=y,
+                mode='markers',
+                marker=dict(size=5, color='black'),
+                showlegend=False
+            )],
+            name=str(t)
+        ))
+
+    # Initial frame
+    init_x, init_y = dot_frames[0] if dot_frames[0] else ([], [])
+    fig = go.Figure(
+        data=[go.Scatter(
+            x=init_x, y=init_y, mode='markers',
+            marker=dict(size=5, color='black'),
+            visible=True,
+            showlegend=False
+        )],
+        layout=go.Layout(
+            xaxis=dict(range=[x_min, x_max], title='X (dva)'),
+            yaxis=dict(range=[y_min, y_max], title='Y (dva)', scaleanchor='x', scaleratio=1),
+            title=f'Dot Motion — Trial {trial}',
+            updatemenus=[dict(
+                type='buttons',
+                showactive=False,
+                buttons=[dict(
+                    label='Play',
+                    method='animate',
+                    args=[None, {
+                        'frame': {'duration': int(1000 / frame_rate), 'redraw': True},
+                        'fromcurrent': True,
+                        'transition': {'duration': 0}
+                    }]
+                )]
+            )]
+        ),
+        frames=frames
+    )
+
+    fig.add_trace(go.Scatter(
+        x=[targ1[0]], y=[targ1[1]],
+        mode='markers',
+        marker=dict(size=10, color='#fe019a', line=dict(width=2, color='black')),  # neon pink hex
+        name='Ipsi Target',
+        showlegend=False
+    ))
+    fig.add_trace(go.Scatter(
+        x=[targ2[0]], y=[targ2[1]],
+        mode='markers',
+        marker=dict(size=10, color='#04d9ff', line=dict(width=2, color='black')),  # neon blue hex
+        name='Contra Target',
+        showlegend=False
+    ))
+    # Add a fixation dot at the center
+    fig.add_trace(go.Scatter(
+        x=[0], y=[0],
+        mode='markers',
+        marker=dict(size=8, color='gray', line=dict(width=1, color='black')),
+        name='Fixation',
+        showlegend=False
+    ))
+
+    # Remove background grid and color, enforce square aspect ratio and set axis limits dynamically
+    fig.update_layout(
+        xaxis=dict(
+            range=[x_min, x_max],
+            title='X (dva)',
+            showgrid=False,
+            zeroline=False,
+            showline=False,
+            showticklabels=True
+        ),
+        yaxis=dict(
+            range=[y_min, y_max],
+            title='Y (dva)',
+            scaleanchor='x',
+            scaleratio=1,
+            showgrid=False,
+            zeroline=False,
+            showline=False,
+            showticklabels=True
+        ),
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        width=int(max(x_max - x_min, y_max - y_min) * 30),
+        height=int(max(x_max - x_min, y_max - y_min) * 30),
+        margin=dict(l=10, r=10, t=30, b=10)
+    )
+    fig.show()
+
+
+# ---- Dot Movie Heatmap Visualization ----
+def plot_movie(df, trial=None, frame_rate=75):
+    """
+    Visualize a binned dot count movie as an animated heatmap.
+
+    Parameters:
+        df: DataFrame with a 'Movie' column (shape: frames × X × Y)
+        trial: int or None, row index to plot; if None, uses trial with highest RT for sCoh == -0.512
+        frame_rate: int, frame rate in Hz (for animation speed)
+    """
+    import plotly.graph_objects as go
+    import numpy as np
+
+    if trial is None:
+        trial = df[df['sCoh'] == -0.512]['RT'].idxmax()
+
+    movie = df.loc[trial, 'Movie']
+    n_frames, Nx, Ny = movie.shape
+    # extent = (-Nx // 2, Nx // 2, -Ny // 2, Ny // 2)  # Removed axis extent calculation
+
+    frames = []
+    for t in range(n_frames):
+        frames.append(go.Frame(
+            data=[go.Heatmap(
+                z=movie[t],
+                zmin=0,
+                colorscale='gray',
+                showscale=False
+            )],
+            name=str(t)
+        ))
+
+    fig = go.Figure(
+        data=[go.Heatmap(
+            z=movie[0],
+            zmin=0,
+            colorscale='gray',
+            showscale=False
+        )],
+        layout=go.Layout(
+            xaxis=dict(visible=False, showgrid=False, zeroline=False, scaleanchor='y', scaleratio=1),
+            yaxis=dict(visible=False, showgrid=False, zeroline=False),
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            width=500,
+            height=500,
+            margin=dict(l=0, r=0, t=0, b=0)
+        ),
+        frames=frames
+    )
+
+    fig.update_layout(
+        updatemenus=[dict(
+            type='buttons',
+            showactive=False,
+            buttons=[dict(
+                label='Play',
+                method='animate',
+                args=[None, {
+                    'frame': {'duration': int(1000 / frame_rate), 'redraw': True},
+                    'fromcurrent': True,
+                    'transition': {'duration': 0}
+                }]
+            )]
+        )]
+    )
+    fig.show()
