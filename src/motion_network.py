@@ -763,7 +763,7 @@ class MotionDetectionNetwork3Dv2(nn.Module):
         self.conv2d_1 = nn.Conv2d(hidden_dim, hidden_dim, kernel_size=9, padding=0)
         self.bn2d_1 = nn.BatchNorm2d(hidden_dim)
         self.conv2d_2 = nn.Conv2d(hidden_dim, hidden_dim, kernel_size=7, padding=0)
-        self.bn2d_2 = nn.BatchNorm2d(hidden_dim)ß
+        self.bn2d_2 = nn.BatchNorm2d(hidden_dim)
 
         # Final linear projection (no temporal layer)
         self.fc = nn.Linear(hidden_dim, latent_dim)
