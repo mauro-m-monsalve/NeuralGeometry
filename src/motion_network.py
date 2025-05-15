@@ -2,6 +2,8 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset
 from scipy.interpolate import interp1d
 from sklearn.model_selection import StratifiedShuffleSplit
+import numpy as np
+import pandas as pd
 def reparametrize_to_frame_time(df, column, clock_time='TimeFromDotsOn', frame_time='FrameTime'):
     new_col = f"{column}-Frame"
     result = []
@@ -147,8 +149,6 @@ class PaddedTrialDataset(torch.utils.data.Dataset):
         return len(self.inputs)
 
 def get_dataloader(df, output, batch_size=32, trial_mask=None, behavioral_axis=None, stratified=None):
-    import numpy as np
-    import pandas as pd
     if trial_mask is not None:
         df = df[trial_mask].reset_index(drop=True)
 
@@ -330,6 +330,26 @@ def train_model(model, train_loader, val_loader, num_epochs=10, device='cuda', l
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+class CausalConv3d(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=(1, 1, 1), padding=(0, 0, 0), dilation=(1, 1, 1)):
+        super(CausalConv3d, self).__init__()
+        self.kernel_size = kernel_size
+        self.dilation = dilation
+        self.padding = padding
+        self.conv = nn.Conv3d(
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride=stride,
+            padding=(0, padding[1], padding[2]),  # pad only spatially here
+            dilation=dilation,
+        )
+
+    def forward(self, x):
+        # Apply left-padding in time dimension manually
+        pad_time = (self.kernel_size[0] - 1) * self.dilation[0]
+        x = F.pad(x, (0, 0, 0, 0, pad_time, 0))  # only pad the front of the time axis
+        return self.conv(x)
 
 
 class CausalConv1d(nn.Module):
@@ -454,38 +474,37 @@ class MotionEncodingNetwork3D(nn.Module):
 
         self.hidden_dim = hidden_dim
 
-        # First 3D convolutional block
-        self.conv3d_1 = nn.Conv3d(
+        # First 3D convolutional block using CausalConv3d
+        self.conv3d_1 = CausalConv3d(
             in_channels=1,
-            out_channels=int(hidden_dim/4),
-            kernel_size=(51, 7, 7),
+            out_channels=int(hidden_dim / 4),
+            kernel_size=(11, 7, 7),
             stride=(1, 2, 2),
-            padding=(25, 0, 0),
+            padding=(0, 0, 0)
         )
-        self.layer_norm_1 = nn.LayerNorm(int(hidden_dim/4))  # Normalize over channels only
+        self.layer_norm_1 = nn.LayerNorm(int(hidden_dim / 4))  # Normalize over channels only
 
-        # Second 3D convolutional block
-        self.conv3d_2 = nn.Conv3d(
-            in_channels=int(hidden_dim/4),
-            out_channels=int(hidden_dim/2),
+        # Second 3D convolutional block using CausalConv3d
+        self.conv3d_2 = CausalConv3d(
+            in_channels=int(hidden_dim / 4),
+            out_channels=int(hidden_dim / 2),
             kernel_size=(1, 5, 5),
             stride=(1, 2, 2),
-            padding=(0, 0, 0),
+            padding=(0, 0, 0)
         )
-        self.layer_norm_2 = nn.LayerNorm(int(hidden_dim/2))  # Normalize over channels only
+        self.layer_norm_2 = nn.LayerNorm(int(hidden_dim / 2))  # Normalize over channels only
 
-        # Third 3D convolutional block
-        self.conv3d_3 = nn.Conv3d(
-            in_channels=int(hidden_dim/2),
+        # Third 3D convolutional block using CausalConv3d
+        self.conv3d_3 = CausalConv3d(
+            in_channels=int(hidden_dim / 2),
             out_channels=hidden_dim,
             kernel_size=(1, 3, 3),
             stride=(1, 2, 2),
-            padding=(0, 0, 0),
+            padding=(0, 0, 0)
         )
         self.layer_norm_3 = nn.LayerNorm(hidden_dim)  # Normalize over channels only
 
         # Average Pooling to collapse spatial dimensions
-        self.avg_pool = nn.AdaptiveAvgPool3d((None, 1, 1))  # Collapses spatial dimensions, retains temporal
 
         # Temporal Encoding Layer
         if temporal_layer_type == "gru":
@@ -533,9 +552,8 @@ class MotionEncodingNetwork3D(nn.Module):
         x = x.permute(0, 2, 3, 4, 1)  # Shape: (batch, time, height, width, hidden_dim)
         x = self.layer_norm_3(x).permute(0, 4, 1, 2, 3)  # Normalize over hidden_dim (channels)
 
-        # Average Pooling to collapse spatial dimensions
-        x = self.avg_pool(x)  # Shape: (batch, hidden_dim, time, 1, 1)
-        x = x.squeeze(-1).squeeze(-1)  # Shape: (batch, hidden_dim, time)
+        # Average Pooling to collapse spatial dimensions (manual mean over H, W)
+        x = x.mean(dim=[3, 4])  # Shape: (batch, hidden_dim, time)
 
         # Temporal encoding
         x = x.permute(0, 2, 1)  # Shape: (batch, time, hidden_dim)
@@ -551,3 +569,225 @@ class MotionEncodingNetwork3D(nn.Module):
         x = x.permute(0, 2, 1)  # Shape: (batch, latent_dim, time)
 
         return x  # Final shape: (batch, latent_dim, time)
+
+
+
+
+class TemporalEncodingNetwork(nn.Module):
+    def __init__(self, height, width, latent_dim=10, temporal_layer_type="gru"):
+        """
+        Temporal encoding network with image size as an input.
+
+        Parameters:
+        - height: Height of the input image.
+        - width: Width of the input image.
+        - latent_dim: Number of latent features in the temporal layer.
+        - temporal_layer_type: Type of temporal encoding layer ("gru", "lstm", "transformer", or "none").
+        """
+        super(TemporalEncodingNetwork, self).__init__()
+        
+        self.height = height
+        self.width = width
+        input_dim = height * width  # Flattened input dimensions
+
+        # Temporal Encoding Layer
+        if temporal_layer_type == "gru":
+            self.temporal_layer = nn.GRU(input_size=input_dim, hidden_size=latent_dim, num_layers=5, dropout=0.3, batch_first=True)
+            self.dropout = nn.Dropout(0.3)
+        elif temporal_layer_type == "lstm":
+            self.temporal_layer = nn.LSTM(input_size=input_dim, hidden_size=latent_dim, num_layers=3, dropout=0.3, batch_first=True)
+            self.dropout = nn.Dropout(0.3)
+        elif temporal_layer_type == "transformer":
+            self.temporal_layer = nn.TransformerEncoderLayer(d_model=input_dim, nhead=10, batch_first=True)
+            self.fc_temporal = nn.Linear(input_dim, latent_dim)
+        elif temporal_layer_type == "none":
+            self.temporal_layer = None
+            self.fc_temporal = nn.Linear(input_dim, latent_dim)
+
+    def forward(self, x):
+        """
+        Forward pass for the temporal encoding network.
+
+        Parameters:
+        - x: Input tensor of shape (batch, channels, time, height, width).
+
+        Returns:
+        - Output tensor of shape (batch, latent_dim, time).
+        """
+        batch_size, channels, time, height, width = x.shape
+        assert height == self.height and width == self.width, "Input image dimensions must match the initialized size."
+
+        # Reshape the movie: combine pixels into features
+        x = x.view(batch_size, time, -1)  # Shape: (batch, time, height * width * channels)
+
+        # Temporal encoding
+        if isinstance(self.temporal_layer, (nn.GRU, nn.LSTM)):
+            x, _ = self.temporal_layer(x)  # Shape: (batch, time, latent_dim)
+            x = self.dropout(x)
+        elif isinstance(self.temporal_layer, nn.TransformerEncoderLayer):
+            x = self.temporal_layer(x)  # Shape: (batch, time, input_dim)
+            x = self.fc_temporal(x)  # Shape: (batch, time, latent_dim)
+        elif self.temporal_layer is None:  # Linear mapping from input_dim to latent_dim
+            x = self.fc_temporal(x)  # Shape: (batch, time, latent_dim)
+
+        x = x.permute(0, 2, 1)  # Shape: (batch, latent_dim, time)
+
+        return x  # Final shape: (batch, latent_dim, time)
+
+
+
+
+
+
+
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+from sklearn.metrics import mean_squared_error
+from scipy.stats import pearsonr
+import numpy as np
+import pandas as pd
+
+def evaluate_fit_quality(model, train_loader, val_loader, df, choice_col='choice'):
+    model.eval()
+    device = next(model.parameters()).device
+
+    def collect_predictions(loader, indices):
+        preds, targets, masks, rts, choices = [], [], [], [], []
+        with torch.no_grad():
+            for (X, Y, M) in loader:
+                X, Y, M = X.to(device), Y.to(device), M.to(device)
+                out = model(X)
+                preds.append(out.cpu())
+                targets.append(Y.cpu())
+                masks.append(M.cpu())
+        preds = torch.cat(preds)
+        targets = torch.cat(targets)
+        masks = torch.cat(masks)
+        for idx in indices:
+            rts.append(df.at[idx, 'RT'])
+            choices.append(df.at[idx, choice_col])
+        return preds, targets, masks, np.array(rts), np.array(choices)
+
+    # Get train/val indices from DataLoader datasets
+    train_indices = train_loader.dataset.indices if hasattr(train_loader.dataset, 'indices') else range(len(train_loader.dataset))
+    val_indices = val_loader.dataset.indices if hasattr(val_loader.dataset, 'indices') else range(len(val_loader.dataset))
+
+    train_preds, train_tgts, train_masks, train_rts, train_choices = collect_predictions(train_loader, train_indices)
+    val_preds, val_tgts, val_masks, val_rts, val_choices = collect_predictions(val_loader, val_indices)
+
+    # Plot a few trial fits using plotly
+    import random
+    random.seed(42)
+    train_idxs = random.sample(range(len(train_tgts)), 3)
+    val_idxs = random.sample(range(len(val_tgts)), 3)
+    fig = make_subplots(rows=2, cols=3, subplot_titles=[f"Train Trial {i}" for i in train_idxs] + [f"Val Trial {i}" for i in val_idxs])
+    for j, i in enumerate(train_idxs):
+        mask = train_masks[i, 0].bool()
+        fig.add_trace(go.Scatter(y=train_tgts[i, 0, mask], mode='lines', name='Target', line=dict(color='blue'), showlegend=(j==0)), row=1, col=j+1)
+        fig.add_trace(go.Scatter(y=train_preds[i, 0, mask], mode='lines', name='Predicted', line=dict(color='red'), showlegend=(j==0)), row=1, col=j+1)
+    for j, i in enumerate(val_idxs):
+        mask = val_masks[i, 0].bool()
+        fig.add_trace(go.Scatter(y=val_tgts[i, 0, mask], mode='lines', name='Target', line=dict(color='blue'), showlegend=False), row=2, col=j+1)
+        fig.add_trace(go.Scatter(y=val_preds[i, 0, mask], mode='lines', name='Predicted', line=dict(color='red'), showlegend=False), row=2, col=j+1)
+    fig.update_layout(title="Sample Trial Fits", height=600, width=1000)
+    fig.show()
+
+    # --- Replace R² computation and plotting with PearsonR, nRMSE, and masked MSE loss ---
+
+
+    def compute_metrics(preds, tgts, masks):
+        corrs, nrmse, mse = [], [], []
+        for p, t, m in zip(preds, tgts, masks):
+            m = m.bool()
+            t_m = t[m].numpy()
+            p_m = p[m].numpy()
+            if len(t_m) > 1:
+                # Pearson correlation
+                corr, _ = pearsonr(t_m, p_m)
+                corrs.append(corr)
+
+                # nRMSE
+                rmse = np.sqrt(mean_squared_error(t_m, p_m))
+                scale = t_m.max() - t_m.min() if t_m.max() > t_m.min() else 1.0
+                nrmse.append(rmse / scale)
+
+                # Raw loss
+                mse.append(mean_squared_error(t_m, p_m))
+            else:
+                corrs.append(np.nan)
+                nrmse.append(np.nan)
+                mse.append(np.nan)
+        return np.array(corrs), np.array(nrmse), np.array(mse)
+
+    corr_train, nrmse_train, mse_train = compute_metrics(train_preds, train_tgts, train_masks)
+    corr_val, nrmse_val, mse_val = compute_metrics(val_preds, val_tgts, val_masks)
+
+    # Plot metrics vs RT using plotly
+    df_metrics = pd.DataFrame({
+        'RT': np.concatenate([train_rts, val_rts]),
+        'PearsonR': np.concatenate([corr_train, corr_val]),
+        'nRMSE': np.concatenate([nrmse_train, nrmse_val]),
+        'Loss': np.concatenate([mse_train, mse_val]),
+        'Choice': pd.Categorical(np.concatenate([train_choices, val_choices])),
+        'Set': ['Train'] * len(train_rts) + ['Val'] * len(val_rts)
+    })
+
+    for metric in ['PearsonR', 'nRMSE', 'Loss']:
+        fig = px.scatter(df_metrics, x='RT', y=metric, color='Choice', facet_col='Set',
+                         title=f"{metric} vs RT Colored by Choice",
+                         category_orders={'Set': ['Train', 'Val']})
+        fig.update_layout(height=500, width=1000)
+        fig.show()
+
+
+
+
+# --- MotionDetectionNetwork3Dv2 ---
+
+class MotionDetectionNetwork3Dv2(nn.Module):
+    def __init__(self, in_channels=1, hidden_dim=64, latent_dim=10):
+        super(MotionDetectionNetwork3Dv2, self).__init__()
+
+        # 3D convolution block
+        self.conv3d = CausalConv3d(
+            in_channels=in_channels,
+            out_channels=hidden_dim,
+            kernel_size=(11, 7, 7),
+            stride=(1, 2, 2),
+            padding=(0, 0, 0),
+        )
+        self.bn3d = nn.BatchNorm3d(hidden_dim)
+
+        # 2D convolution blocks (applied per frame)
+        self.conv2d_1 = nn.Conv2d(hidden_dim, hidden_dim, kernel_size=9, padding=0)
+        self.bn2d_1 = nn.BatchNorm2d(hidden_dim)
+        self.conv2d_2 = nn.Conv2d(hidden_dim, hidden_dim, kernel_size=7, padding=0)
+        self.bn2d_2 = nn.BatchNorm2d(hidden_dim)ß
+
+        # Final linear projection (no temporal layer)
+        self.fc = nn.Linear(hidden_dim, latent_dim)
+
+    def forward(self, x):
+        # Input x: (batch, 1, time, height, width)
+        x = self.conv3d(x)  # (B, C, T, H, W)
+        x = self.bn3d(x)
+        x = F.relu(x)
+
+        # Prepare for 2D conv per frame: (B*T, C, H, W)
+        B, C, T, H, W = x.shape
+        x = x.permute(0, 2, 1, 3, 4).reshape(B * T, C, H, W).contiguous()
+
+        x = F.relu(self.bn2d_1(self.conv2d_1(x)))
+        x = F.relu(self.bn2d_2(self.conv2d_2(x)))
+
+        # Global average pooling over spatial dimensions
+        x = x.mean(dim=[2, 3])  # (B*T, C)
+
+        # Linear projection
+        x = self.fc(x)  # (B*T, latent_dim)
+
+        # Reshape back to (B, latent_dim, T)
+        x = x.view(B, T, -1).permute(0, 2, 1).contiguous()
+
+        return x  # Shape: (B, latent_dim, T)
