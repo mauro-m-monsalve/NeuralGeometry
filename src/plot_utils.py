@@ -1835,7 +1835,7 @@ def plot_property_retinotopy(property, shape, extent, cmap='earth_r', contour=Fa
 
 
 # ---- Evidence Modulation Plotting ----
-def plot_evidence_modulation(df_fit, left_col='ev_mod_resolution', right_col='ev_mod_uncertainty'):
+def plot_evidence_modulation(df_fit, left_col='ev_mod_uncertainty', right_col='ev_mod_resolution', plot='heatmap',save_fig=False):
     """
     Plot two side-by-side heatmaps of ev_mod_resolution and ev_mod_uncertainty 
     based on the window coordinates (arc_center x rt_center).
@@ -1868,57 +1868,120 @@ def plot_evidence_modulation(df_fit, left_col='ev_mod_resolution', right_col='ev
         right_grid[i, j] = row[right_col]
 
     vmax = np.nanmax([left_grid, right_grid])
+    if plot == 'heatmap':
+        fig = make_subplots(rows=1, cols=2, shared_yaxes=True, subplot_titles=[left_col, right_col])
 
-    fig = make_subplots(rows=1, cols=2, shared_yaxes=True, subplot_titles=[left_col, right_col])
+        for idx, (grid, title) in enumerate(zip([left_grid, right_grid], [left_col, right_col]), start=1):
+            fig.add_trace(go.Heatmap(
+                z=grid,
+                x=arc_centers,
+                y=rt_centers,
+                colorscale='Viridis',
+                zmin=0,
+                zmax=vmax,
+                showscale=True,
+                colorbar=dict(title='Projection', len=0.8),
+                text=[[f"{val:.2f}" if not np.isnan(val) else "" for val in row] for row in grid],
+                hoverinfo="text"
+            ), row=1, col=idx)
 
-    for idx, (grid, title) in enumerate(zip([left_grid, right_grid], [left_col, right_col]), start=1):
-        fig.add_trace(go.Heatmap(
-            z=grid,
-            x=arc_centers,
-            y=rt_centers,
-            colorscale='Viridis',
-            zmin=0,
-            zmax=vmax,
-            showscale=True,
-            colorbar=dict(title='Projection', len=0.8),
-            text=[[f"{val:.2f}" if not np.isnan(val) else "" for val in row] for row in grid],
-            hoverinfo="text"
-        ), row=1, col=idx)
+        fig.update_layout(
+            title="Projections of Local Input Weights into the Global Evidence Direction",
+            width=800,
+            height=400,
+            template="plotly_white",
+            margin=dict(l=50, r=50, t=50, b=50)
+        )
 
-    fig.update_layout(
-        title="Projections of Local Input Weights into the Global Evidence Direction",
-        width=800,
-        height=400,
-        template="plotly_white",
-        margin=dict(l=50, r=50, t=50, b=50)
-    )
+        # Set x-axis ticks to arc_centers and y-axis ticks to rt_centers
+        arc_tickvals = arc_centers
+        arc_ticktext = [f"{v:.2f}" for v in arc_centers]
+        rt_tickvals = rt_centers
+        rt_ticktext = [f"{v:.2f}" for v in rt_centers]
 
-    # Set x-axis ticks to arc_centers and y-axis ticks to rt_centers
-    arc_tickvals = arc_centers
-    arc_ticktext = [f"{v:.2f}" for v in arc_centers]
-    rt_tickvals = rt_centers
-    rt_ticktext = [f"{v:.2f}" for v in rt_centers]
+        fig.update_xaxes(
+            title_text="Arc Center", 
+            tickvals=arc_tickvals, 
+            ticktext=arc_ticktext,
+            row=1, col=1
+        )
+        fig.update_xaxes(
+            title_text="Arc Center", 
+            tickvals=arc_tickvals, 
+            ticktext=arc_ticktext,
+            row=1, col=2
+        )
+        fig.update_yaxes(
+            title_text="RT Center", 
+            tickvals=rt_tickvals, 
+            ticktext=rt_ticktext,
+            row=1, col=1
+        )
 
-    fig.update_xaxes(
-        title_text="Arc Center", 
-        tickvals=arc_tickvals, 
-        ticktext=arc_ticktext,
-        row=1, col=1
-    )
-    fig.update_xaxes(
-        title_text="Arc Center", 
-        tickvals=arc_tickvals, 
-        ticktext=arc_ticktext,
-        row=1, col=2
-    )
-    fig.update_yaxes(
-        title_text="RT Center", 
-        tickvals=rt_tickvals, 
-        ticktext=rt_ticktext,
-        row=1, col=1
-    )
+    elif plot == 'lines':
+        fig = make_subplots(rows=1, cols=2, shared_yaxes=True,
+                            subplot_titles=[left_col, right_col])
 
+        # Use a restricted grayscale range to avoid pure white and pure black
+        import matplotlib.cm as cm
+        import matplotlib.colors as mcolors
+        grayscale = cm.get_cmap('gray')
+        norm = lambda i: 0.15 + 0.70 * (i / max(len(rt_centers)-1, 1))
+
+        # Left column — lines
+        for i, rt in enumerate(rt_centers):
+            y_vals = left_grid[i, :]
+            color = mcolors.to_hex(grayscale(norm(i)))
+            fig.add_trace(
+                go.Scatter(
+                    x=arc_centers,
+                    y=y_vals,
+                    mode='lines',
+                    line=dict(color=color, width=2),
+                    name=f"RT={rt:.2f}",
+                    showlegend=False
+                ),
+                row=1, col=1
+            )
+
+        # Right column — lines
+        for i, rt in enumerate(rt_centers):
+            y_vals = right_grid[i, :]
+            color = mcolors.to_hex(grayscale(norm(i)))
+            fig.add_trace(
+                go.Scatter(
+                    x=arc_centers,
+                    y=y_vals,
+                    mode='lines',
+                    line=dict(color=color, width=2),
+                    name=f"RT={rt:.2f}",
+                    showlegend=False
+                ),
+                row=1, col=2
+            )
+
+        # Compute global y-limits across both grids
+        y_min = float(np.nanmin([left_grid, right_grid]))
+        y_max = float(np.nanmax([left_grid, right_grid]))
+
+        # Apply same y-range and label axes
+        fig.update_yaxes(title_text="Modulation", range=[y_min, y_max], row=1, col=1)
+        fig.update_yaxes(range=[y_min, y_max], row=1, col=2)
+
+        fig.update_xaxes(title_text="Arc Center", row=1, col=1)
+        fig.update_xaxes(title_text="Arc Center", row=1, col=2)
+
+        fig.update_layout(
+            title="Line Slices of Evidence Modulation (One line per RT center)",
+            width=800,
+            height=400,
+            template="plotly_white",
+            margin=dict(l=50, r=50, t=50, b=50)
+        )
     fig.show()
+    if save_fig:
+        fig.write_html('fig.html')
+    
 
 
 
