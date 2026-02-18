@@ -1,0 +1,51 @@
+# Config for LIP with Regularization
+MODEL:
+  DATA_DIM: 160
+  EXT_INPUT_DIM: 0
+  SEQ_LEN: 228
+  IC_ENC_DIM: 64
+  CI_ENC_DIM: 64
+  CON_DIM: 64
+  CO_DIM: 3
+  IC_DIM: 64
+  GEN_DIM: 128
+  FAC_DIM: 32
+  DROPOUT_RATE: 0.05
+  CD_RATE: 0.35
+  CD_PASS_RATE: 0.0
+  CO_PRIOR_TAU: 10.0
+  CO_PRIOR_NVAR: 0.1
+  IC_PRIOR_VAR: 0.1
+  IC_POST_VAR_MIN: 1.0e-4
+  # Causal Model
+  DO_CAUSAL_CONTROLLER: True
+  DO_FEED_FACTORS_TO_CONTROLLER: False
+  IC_ENC_SEQ_LEN: 1  # Uses only the first time-step to train initial condition to the generator
+TRAIN:
+  DATA:
+    DIR: /home/mauromon/JNotebooks/LIP-AutoLFADS
+    PREFIX: DataLIP_10ms_S7.h5
+  PATIENCE: 150
+  BATCH_SIZE: 128
+  MAX_EPOCHS: 10000
+  MAX_GRAD_NORM: 200.0
+  LOSS_SCALE: 1.0
+  LR:
+    INIT: 5.0e-3
+    DECAY: 0.95
+  L2:
+    START_EPOCH: 0
+    INCREASE_EPOCH: 80
+    IC_ENC_SCALE: 0.0
+    CI_ENC_SCALE: 0.0
+    GEN_SCALE: 1.0
+    CON_SCALE: 1.0
+  KL:
+    START_EPOCH: 0
+    INCREASE_EPOCH: 80
+    IC_WEIGHT: 1.0
+    CO_WEIGHT: 1.0
+  USE_TB: True
+  MODEL_DIR: /home/mauromon/JNotebooks/LIP-AutoLFADS/S7
+  OVERWRITE: True
+  
